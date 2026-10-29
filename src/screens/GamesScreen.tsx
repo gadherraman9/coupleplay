@@ -27,7 +27,11 @@ export default function GamesScreen({ onPickGame, onOpenParty }: GamesScreenProp
               <small>{game.tagline}</small>
             </span>
             <span className="game-card-cta">
-              {game.soloOnly ? "Solo" : (
+              {game.soloOnly ? "Solo" : game.minPlayers === game.maxPlayers ? (
+                <>
+                  <Users size={12} /> {game.minPlayers}
+                </>
+              ) : (
                 <>
                   <Users size={12} /> {game.minPlayers}-{game.maxPlayers}
                 </>
