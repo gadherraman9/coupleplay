@@ -1,12 +1,13 @@
-import { CircleUserRound, Gamepad2, Home, MessageCircle, Users } from "lucide-react";
+import { CircleUserRound, Gamepad2, Heart, Home, MessageCircle, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type Tab = "home" | "games" | "chats" | "friends" | "me";
 
 interface BottomNavProps {
-  tab: Tab;
+  tab: Tab | null;
   onChange: (tab: Tab) => void;
   badges?: Partial<Record<Tab, number>>;
+  hiddenOnMobile?: boolean;
 }
 
 const ITEMS: { id: Tab; label: string; icon: LucideIcon }[] = [
@@ -17,9 +18,16 @@ const ITEMS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "me", label: "Me", icon: CircleUserRound },
 ];
 
-export default function BottomNav({ tab, onChange, badges = {} }: BottomNavProps) {
+// A bottom bar on phones, a sidebar on wider screens.
+export default function BottomNav({ tab, onChange, badges = {}, hiddenOnMobile }: BottomNavProps) {
   return (
-    <nav className="bottom-nav" aria-label="Primary">
+    <nav className={`bottom-nav ${hiddenOnMobile ? "is-hidden-mobile" : ""}`} aria-label="Primary">
+      <span className="nav-brand" aria-hidden="true">
+        <Heart size={20} fill="currentColor" />
+        <span>
+          Couple<b>Play</b>
+        </span>
+      </span>
       {ITEMS.map(({ id, label, icon: Icon }) => {
         const active = tab === id;
         const badge = badges[id] ?? 0;

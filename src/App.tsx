@@ -6,7 +6,6 @@ import GameHost from "./components/GameHost";
 import GameModeSheet from "./components/GameModeSheet";
 import GameOverlay from "./components/GameOverlay";
 import Matchmaking from "./components/Matchmaking";
-import StatusBar from "./components/StatusBar";
 import { useBotBrain } from "./backend/bots";
 import { api, friendIds, getDB, onBackendError, useBackendReady, useDB, useSessionId } from "./backend/store";
 import { AppContext, attempt } from "./context";
@@ -141,95 +140,82 @@ export default function App() {
   const themeId = me?.appTheme ?? "rose";
 
   return (
-    <div className="site">
-      <div className="site-glow site-glow--one" aria-hidden="true" />
-      <div className="site-glow site-glow--two" aria-hidden="true" />
-      <div className="site-glow site-glow--three" aria-hidden="true" />
-
-      <main className="phone">
-        <div className={`phone-screen ${isDarkTheme(themeId) ? "theme-dark" : ""}`} style={appThemeStyle(themeId)}>
-          <div className="dynamic-island" aria-hidden="true">
-            <span />
-          </div>
-          <StatusBar light={!me || isDarkTheme(themeId)} />
-          {me && !overlay && !gameSession && <div className="top-fade" aria-hidden="true" />}
-
-          <div className="app">
-            {!ready ? (
-              <div className="suspended">
-                <span className="spinner" aria-hidden="true" />
-                <p>Connecting…</p>
-              </div>
-            ) : !me || !ctx ? (
-              <LoginScreen />
-            ) : me.suspended ? (
-              <div className="suspended">
-                <ShieldAlert size={42} />
-                <h2>Account suspended</h2>
-                <p>Many people reported this account, so it has been suspended automatically. If you think this is a mistake, contact support.</p>
-                <button type="button" className="primary-btn" onClick={() => api.logOut()}>
-                  Log out
-                </button>
-              </div>
-            ) : (
-              <AppContext.Provider value={ctx}>
-                {overlay?.kind === "chat" ? (
-                  <ChatScreen key={overlay.convId} convId={overlay.convId} onBack={() => setOverlay(null)} />
-                ) : overlay?.kind === "rooms" ? (
-                  <RoomsScreen onBack={() => setOverlay(null)} />
-                ) : overlay?.kind === "strangers" ? (
-                  <StrangerScreen onBack={() => setOverlay(null)} />
-                ) : overlay?.kind === "shop" ? (
-                  <ShopScreen onBack={() => setOverlay(null)} />
-                ) : (
-                  <div className="screen-view" key={tab}>
-                    {tab === "home" && (
-                      <HomeScreen
-                        onGoGames={() => switchTab("games")}
-                        onOpenStrangers={() => setOverlay({ kind: "strangers" })}
-                        onOpenRooms={() => setOverlay({ kind: "rooms" })}
-                        onOpenShop={() => setOverlay({ kind: "shop" })}
-                        onPickGame={setModeSheet}
-                      />
-                    )}
-                    {tab === "games" && <GamesScreen onPickGame={setModeSheet} onOpenParty={setPartyGame} />}
-                    {tab === "chats" && (
-                      <ChatsScreen
-                        onOpenRooms={() => setOverlay({ kind: "rooms" })}
-                        onOpenStrangers={() => setOverlay({ kind: "strangers" })}
-                      />
-                    )}
-                    {tab === "friends" && <FriendsScreen onSignUp={() => switchTab("me")} />}
-                    {tab === "me" && <ProfileScreen onOpenShop={() => setOverlay({ kind: "shop" })} />}
-                  </div>
-                )}
-
-                {!overlay && <BottomNav tab={tab} onChange={switchTab} badges={badges} />}
-
-                {modeSheet && <GameModeSheet gameId={modeSheet} onClose={() => setModeSheet(null)} onFindStrangers={setMatching} />}
-                {matching && <Matchmaking gameId={matching} onClose={() => setMatching(null)} />}
-                {gameSession && <GameHost key={gameSession} sessionId={gameSession} onClose={() => setGameSession(null)} />}
-                {partyGame && (
-                  <GameOverlay
-                    gameId={partyGame}
-                    partnerName={me.partnerId ? nameOf(me.partnerId) : "your partner"}
-                    onClose={() => setPartyGame(null)}
-                  />
-                )}
-              </AppContext.Provider>
-            )}
-
-            {toast && (
-              <div className="toast" role="status">
-                <span className="toast-icon">
-                  <Check size={12} strokeWidth={3.4} />
-                </span>
-                {toast}
-              </div>
-            )}
-          </div>
+    <div className={`site ${me ? "site--app" : "site--login"} ${isDarkTheme(themeId) ? "theme-dark" : ""}`} style={appThemeStyle(themeId)}>
+      {!ready ? (
+        <div className="suspended">
+          <span className="spinner" aria-hidden="true" />
+          <p>Connecting…</p>
         </div>
-      </main>
+      ) : !me || !ctx ? (
+        <LoginScreen />
+      ) : me.suspended ? (
+        <div className="suspended">
+          <ShieldAlert size={42} />
+          <h2>Account suspended</h2>
+          <p>Many people reported this account, so it has been suspended automatically. If you think this is a mistake, contact support.</p>
+          <button type="button" className="primary-btn" onClick={() => api.logOut()}>
+            Log out
+          </button>
+        </div>
+      ) : (
+        <AppContext.Provider value={ctx}>
+          <div className="app">
+            <BottomNav tab={overlay ? null : tab} onChange={switchTab} badges={badges} hiddenOnMobile={Boolean(overlay)} />
+            <main className="app-main">
+              {overlay?.kind === "chat" ? (
+                <ChatScreen key={overlay.convId} convId={overlay.convId} onBack={() => setOverlay(null)} />
+              ) : overlay?.kind === "rooms" ? (
+                <RoomsScreen onBack={() => setOverlay(null)} />
+              ) : overlay?.kind === "strangers" ? (
+                <StrangerScreen onBack={() => setOverlay(null)} />
+              ) : overlay?.kind === "shop" ? (
+                <ShopScreen onBack={() => setOverlay(null)} />
+              ) : (
+                <div className="screen-view" key={tab}>
+                  {tab === "home" && (
+                    <HomeScreen
+                      onGoGames={() => switchTab("games")}
+                      onOpenStrangers={() => setOverlay({ kind: "strangers" })}
+                      onOpenRooms={() => setOverlay({ kind: "rooms" })}
+                      onOpenShop={() => setOverlay({ kind: "shop" })}
+                      onPickGame={setModeSheet}
+                    />
+                  )}
+                  {tab === "games" && <GamesScreen onPickGame={setModeSheet} onOpenParty={setPartyGame} />}
+                  {tab === "chats" && (
+                    <ChatsScreen
+                      onOpenRooms={() => setOverlay({ kind: "rooms" })}
+                      onOpenStrangers={() => setOverlay({ kind: "strangers" })}
+                    />
+                  )}
+                  {tab === "friends" && <FriendsScreen onSignUp={() => switchTab("me")} />}
+                  {tab === "me" && <ProfileScreen onOpenShop={() => setOverlay({ kind: "shop" })} />}
+                </div>
+              )}
+
+              {modeSheet && <GameModeSheet gameId={modeSheet} onClose={() => setModeSheet(null)} onFindStrangers={setMatching} />}
+              {matching && <Matchmaking gameId={matching} onClose={() => setMatching(null)} />}
+              {gameSession && <GameHost key={gameSession} sessionId={gameSession} onClose={() => setGameSession(null)} />}
+              {partyGame && (
+                <GameOverlay
+                  gameId={partyGame}
+                  partnerName={me.partnerId ? nameOf(me.partnerId) : "your partner"}
+                  onClose={() => setPartyGame(null)}
+                />
+              )}
+            </main>
+          </div>
+        </AppContext.Provider>
+      )}
+
+      {toast && (
+        <div className="toast" role="status">
+          <span className="toast-icon">
+            <Check size={12} strokeWidth={3.4} />
+          </span>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
