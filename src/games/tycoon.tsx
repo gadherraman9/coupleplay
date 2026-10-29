@@ -1,6 +1,7 @@
 import type { GameDef, GameViewProps } from "./types";
 import { rollDie } from "./types";
-import { Dice, LogLine } from "./ui";
+import { play } from "./sfx";
+import { Dice, LogLine, PlayerChips, useOnChange, useStepper } from "./ui";
 
 type Square =
   | { kind: "go" | "jail" | "gotojail" | "chance"; name: string }
@@ -149,6 +150,18 @@ function TycoonView({ state, me, names, act, finished }: GameViewProps<State, Ac
   const current = state.players[state.turn];
   const myTurn = current === me && !finished;
   const here = BOARD[state.position[current]];
+  const { shown, busy } = useStepper(state.position, (player, at, target) => {
+    const dist = (target - at + BOARD.length) % BOARD.length;
+    if (dist > 0 && dist <= 12 && !state.jailed[player]) {
+      play("step");
+      return (at + 1) % BOARD.length;
+    }
+    play("slide");
+    return target;
+  });
+  const owned = Object.keys(state.props).length;
+  useOnChange(owned, (prev, next) => next > prev && play("coin"));
+  const ready = myTurn && !busy;
 
   return (
     <div className="board-game">
@@ -177,7 +190,7 @@ function TycoonView({ state, me, names, act, finished }: GameViewProps<State, Ac
               {ownerSeat >= 0 && <span className="ty-owner" style={{ background: PLAYER_COLORS[ownerSeat] }} />}
               <span className="ty-tokens">
                 {state.players.map((player, seat) =>
-                  state.position[player] === index && !state.bankrupt.includes(player) ? (
+                  shown[player] === index && !state.bankrupt.includes(player) ? (
                     <span key={player} className="ty-token" style={{ background: PLAYER_COLORS[seat] }} />
                   ) : null,
                 )}
@@ -187,34 +200,30 @@ function TycoonView({ state, me, names, act, finished }: GameViewProps<State, Ac
         })}
         <div className="ty-center">
           <div className="ty-dice">
-            <Dice value={state.dice?.[0] ?? null} small />
-            <Dice value={state.dice?.[1] ?? null} small />
+            <Dice value={state.dice?.[0] ?? null} small nonce={state.log} />
+            <Dice value={state.dice?.[1] ?? null} small nonce={state.log} />
           </div>
           <LogLine log={state.log} names={names} />
           <small className="ty-round">Round {Math.min(state.round, MAX_ROUNDS)} / {MAX_ROUNDS}</small>
         </div>
       </div>
 
-      <div className="players-strip">
-        {state.players.map((player, seat) => (
-          <span
-            key={player}
-            className={`player-chip ${player === current ? "is-turn" : ""} ${state.bankrupt.includes(player) ? "is-out" : ""}`}
-          >
-            <i style={{ background: PLAYER_COLORS[seat] }} />
-            {names[player]} · ₹{state.money[player]}
-          </span>
-        ))}
-      </div>
+      <PlayerChips
+        players={state.players}
+        current={current}
+        names={names}
+        color={(_, seat) => PLAYER_COLORS[seat]}
+        detail={(player) => (state.bankrupt.includes(player) ? "bankrupt" : `₹${state.money[player]}`)}
+      />
 
       <div className="board-actions board-actions--wrap">
-        {!myTurn && <p className="turn-label">{finished ? "Game over" : `${names[current]}'s turn`}</p>}
-        {myTurn && state.phase === "roll" && (
+        {!ready && <p className="turn-label">{finished ? "Game over" : busy ? "Moving…" : `${names[current]}'s turn`}</p>}
+        {ready && state.phase === "roll" && (
           <button type="button" className="primary-btn" onClick={() => act({ type: "roll" })}>
             {state.jailed[me] ? "Serve jail time" : "Roll the dice"}
           </button>
         )}
-        {myTurn && state.phase === "buy" && (here.kind === "city" || here.kind === "station") && (
+        {ready && state.phase === "buy" && (here.kind === "city" || here.kind === "station") && (
           <>
             <button type="button" className="primary-btn" disabled={state.money[me] < here.price} onClick={() => act({ type: "buy" })}>
               Buy {here.name} for ₹{here.price}
@@ -224,7 +233,7 @@ function TycoonView({ state, me, names, act, finished }: GameViewProps<State, Ac
             </button>
           </>
         )}
-        {myTurn && state.phase === "end" && (
+        {ready && state.phase === "end" && (
           <>
             <p className="turn-label">Tap your glowing cities to build houses</p>
             <button type="button" className="primary-btn" onClick={() => act({ type: "end" })}>
@@ -338,7 +347,7 @@ export const tycoonGame: GameDef<State, Action> = {
   },
   winner: (state) => state.winner,
   currentPlayer: (state) => state.players[state.turn],
-  botDelay: 1000,
+  botDelay: 1600,
   botMove: (state, bot) => {
     if (state.phase === "roll") return { type: "roll" };
     if (state.phase === "buy") {

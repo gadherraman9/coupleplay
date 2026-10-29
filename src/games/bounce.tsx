@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameDef, GameViewProps } from "./types";
+import { play } from "./sfx";
 
 const CW = 340;
 const CH = 470;
@@ -159,9 +160,11 @@ function BounceView({ state, act }: GameViewProps<State, Action>) {
         ) {
           if (p.kind === "crumble") {
             p.broken = true;
+            play("draw", 0.6);
           } else {
             ball.y = p.y - BALL_R;
             ball.vy = p.kind === "spring" ? JUMP * 1.6 : JUMP;
+            play(p.kind === "spring" ? "climb" : "bounce", 0.5);
           }
         }
       }
@@ -169,6 +172,7 @@ function BounceView({ state, act }: GameViewProps<State, Action>) {
         if (!h.taken && Math.abs(h.x - ball.x) < 18 && Math.abs(h.y - ball.y) < 18) {
           h.taken = true;
           collected += 1;
+          play("coin", 0.7);
         }
       }
 
@@ -194,6 +198,7 @@ function BounceView({ state, act }: GameViewProps<State, Action>) {
       if (ball.y - BALL_R > CH) {
         setRunning(false);
         setOver(now);
+        play("lose");
         act({ type: "over", score: now });
         return;
       }

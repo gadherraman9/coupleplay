@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flag, MessageCircle, RefreshCw, Trophy, X } from "lucide-react";
+import { Flag, MessageCircle, RefreshCw, Trophy, Volume2, VolumeX, X } from "lucide-react";
 import { api, areFriends } from "../backend/store";
 import { attempt, useApp } from "../context";
 import { botName, gameById } from "../games/registry";
 import { isBotPlayer } from "../games/types";
+import { isMuted, onMuteChange, play, setMuted } from "../games/sfx";
+import { Confetti } from "../games/ui";
 import ConversationView from "./ConversationView";
 import SafetySheet from "./SafetySheet";
 
@@ -16,6 +18,8 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const [chatOpen, setChatOpen] = useState(false);
   const [reporting, setReporting] = useState<string | null>(null);
   const seenMessages = useRef<number | null>(null);
+  const [muted, setMutedState] = useState(isMuted());
+  useEffect(() => onMuteChange(setMutedState), []);
 
   const names = useMemo(() => {
     const map: Record<string, string> = {};
@@ -69,6 +73,27 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
     }, def.botDelay ?? 900);
     return () => window.clearTimeout(timer);
   }, [session, def, current, me.id, sessionId, db.users]);
+
+  // Chime when it becomes my turn, fanfare when the game ends.
+  const wasMyTurn = useRef(current === me.id);
+  useEffect(() => {
+    const mine = current === me.id && session?.status === "playing";
+    if (mine && !wasMyTurn.current && !def?.soloOnly && (session?.players.length ?? 0) > 1) play("turn", 0.7);
+    wasMyTurn.current = mine;
+  }, [current, me.id, session?.status, def?.soloOnly, session?.players.length]);
+
+  const endedRef = useRef(session?.status === "finished");
+  const [celebrate, setCelebrate] = useState(false);
+  useEffect(() => {
+    if (session?.status !== "finished" || endedRef.current || def?.soloOnly) return;
+    endedRef.current = true;
+    const won = session.winner === me.id;
+    const timer = window.setTimeout(() => {
+      play(won ? "win" : "lose");
+      if (won) setCelebrate(true);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [session?.status, session?.winner, me.id, def?.soloOnly]);
 
   const rewardKey = `cp_reward_${sessionId}_${me.id}`;
   useEffect(() => {
@@ -128,6 +153,9 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
               : `with ${opponents.map((p) => names[p]).join(", ")}`}
           </p>
         </div>
+        <button type="button" className="round-btn" onClick={() => setMuted(!muted)} aria-label={muted ? "Turn sound on" : "Turn sound off"}>
+          {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+        </button>
         {strangers.length > 0 && (
           <button type="button" className="round-btn" onClick={() => setReporting(strangers[0])} aria-label="Report player">
             <Flag size={16} />
@@ -141,12 +169,14 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         )}
       </header>
 
-      <div className="game-body game-body--board">
+      <div className={`game-body game-body--board game-table--${def.id}`}>
         <View state={session.state} me={me.id} players={session.players} names={names} act={act} finished={finished} />
 
         {finished && !def.soloOnly && (
-          <div className="win-banner">
-            <Trophy size={22} />
+          <div className={`win-banner ${session.winner === me.id ? "is-win" : ""}`}>
+            <span className="win-trophy">
+              <Trophy size={28} />
+            </span>
             <strong>{session.winner === me.id ? "You won! 🎉" : `${names[session.winner ?? ""] ?? "Someone"} won`}</strong>
             <button type="button" className="primary-btn" onClick={() => playGame(def.id, opponents, session.convId.startsWith("dm:") ? session.convId : undefined)}>
               <RefreshCw size={16} /> Rematch
@@ -154,6 +184,8 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
           </div>
         )}
       </div>
+
+      {celebrate && <Confetti />}
 
       {chatOpen && hasChat && (
         <div className="game-chat">

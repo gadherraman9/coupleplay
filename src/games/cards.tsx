@@ -1,7 +1,9 @@
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import type { GameDef, GameViewProps } from "./types";
 import { shuffle } from "./types";
-import { LogLine } from "./ui";
+import { play } from "./sfx";
+import { LogLine, useOnChange } from "./ui";
 
 type Color = "red" | "yellow" | "green" | "blue";
 type Value = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "skip" | "reverse" | "draw2" | "wild" | "wild4";
@@ -76,22 +78,34 @@ function draw(state: State, count: number) {
 const step = (state: State, by: number, times = 1) =>
   (((by + state.direction * times) % state.players.length) + state.players.length) % state.players.length;
 
-export function CardFace({ card, small }: { card: Card; small?: boolean }) {
+export function CardFace({ card, small, style }: { card: Card; small?: boolean; style?: CSSProperties }) {
   const label = LABEL[card.value] ?? card.value;
   return (
-    <span className={`uno-card ${small ? "uno-card--small" : ""} ${card.color === "wild" ? "is-wild" : ""}`} style={{ background: HEX[card.color] }}>
-      <span className="uno-card-oval">{label}</span>
+    <span
+      className={`uno-card ${small ? "uno-card--small" : ""} ${card.color === "wild" ? "is-wild" : ""}`}
+      style={{ ["--card" as string]: HEX[card.color], ...style }}
+    >
+      <span className="uno-card-oval" style={{ color: card.color === "wild" ? "#1f1630" : HEX[card.color] }}>
+        {label}
+      </span>
       <small>{label}</small>
+      <small className="uno-card-corner">{label}</small>
     </span>
   );
 }
+
+// A fixed tilt per card id, so the pile looks tossed but is the same everywhere.
+const tilt = (id: number) => ((id * 37) % 21) - 10;
 
 function CardsView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
   const [choosing, setChoosing] = useState<number | null>(null);
   const current = state.players[state.turn];
   const myTurn = current === me && !finished;
-  const top = state.discard[state.discard.length - 1];
   const hand = state.hands[me] ?? [];
+  const totalCards = state.players.reduce((n, p) => n + state.hands[p].length, 0);
+  useOnChange(state.discard.length, (prev, next) => next > prev && play("card"));
+  useOnChange(totalCards, (prev, next) => next > prev && play("draw"));
+  useOnChange(state.color, () => state.discard[state.discard.length - 1]?.color === "wild" && play("coin"));
 
   return (
     <div className="board-game cards-game">
@@ -113,9 +127,17 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
         <button type="button" className="card-back card-back--deck" disabled={!myTurn || state.drew} onClick={() => act({ type: "draw" })} aria-label="Draw a card">
           <span>Draw</span>
         </button>
-        <CardFace card={top} />
-        <span className="current-color" style={{ background: HEX[state.color] }} title={`Color: ${state.color}`} />
-        <span className="direction">{state.direction === 1 ? "↻" : "↺"}</span>
+        <span className="discard-pile">
+          {state.discard.slice(-3).map((card, i, pile) => (
+            <span key={card.id} className={`discard-card ${i === pile.length - 1 ? "is-top" : ""}`} style={{ transform: `rotate(${tilt(card.id)}deg)` }}>
+              <CardFace card={card} />
+            </span>
+          ))}
+        </span>
+        <span className="table-info">
+          <span key={state.color} className="current-color" style={{ background: HEX[state.color] }} title={`Color: ${state.color}`} />
+          <span key={state.direction} className="direction">{state.direction === 1 ? "↻" : "↺"}</span>
+        </span>
       </div>
 
       <LogLine log={state.log} names={names} />
@@ -138,13 +160,14 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
       )}
 
       <div className="my-hand">
-        {hand.map((card) => {
+        {hand.map((card, i) => {
           const ok = myTurn && playable(state, card);
           return (
             <button
               key={card.id}
               type="button"
               className={`hand-card ${ok ? "is-playable" : ""}`}
+              style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
               disabled={!ok}
               onClick={() => (card.color === "wild" ? setChoosing(card.id) : act({ type: "play", card: card.id }))}
             >

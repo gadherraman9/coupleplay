@@ -1,6 +1,7 @@
 import type { GameDef, GameViewProps } from "./types";
 import { rollDie } from "./types";
-import { Dice, LogLine } from "./ui";
+import { haptic, play } from "./sfx";
+import { Dice, LogLine, PlayerChips, useStepper } from "./ui";
 
 // The 52-square loop, clockwise from red's start square, as [row, col].
 const TRACK: [number, number][] = [
@@ -35,6 +36,7 @@ interface State {
   tokens: Record<string, number[]>;
   turn: number;
   dice: number | null;
+  rollNo?: number;
   phase: "roll" | "move";
   log: string;
   winner: string | null;
@@ -77,7 +79,24 @@ function cellOf(seat: number, pos: number, token: number): [number, number] {
 
 function LudoView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
   const current = state.players[state.turn];
-  const myTurn = current === me && !finished;
+  const targets: Record<string, number> = {};
+  state.players.forEach((player) => state.tokens[player].forEach((pos, t) => (targets[`${player}:${t}`] = pos)));
+  const { shown, busy } = useStepper(targets, (_key, at, target, all) => {
+    if (target === -1) {
+      const othersMoving = Object.keys(all.targets).some((k) => all.targets[k] !== -1 && all.shown[k] !== all.targets[k]);
+      if (othersMoving) return at;
+      play("capture");
+      haptic(40);
+      return -1;
+    }
+    if (at === -1 || at < target) {
+      const next = at === -1 ? 0 : at + 1;
+      play(next === FINISH ? "home" : "step");
+      return next;
+    }
+    return target;
+  });
+  const myTurn = current === me && !finished && !busy;
   const options = myTurn && state.phase === "move" ? movable(state, me) : [];
   const cellType = new Map<string, string>();
   TRACK.forEach(([r, c], i) => {
@@ -85,6 +104,23 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
     cellType.set(`${r},${c}`, startSeat >= 0 ? `start-${startSeat}` : SAFE.has(i) ? "star" : "track");
   });
   COLORS.forEach((color, seat) => color.home.forEach(([r, c]) => cellType.set(`${r},${c}`, `home-${seat}`)));
+
+  // Tokens sharing a square sit side by side.
+  const placed = state.players.flatMap((player, p) => {
+    const seat = state.seats[p];
+    return state.tokens[player].map((_, t) => {
+      const pos = shown[`${player}:${t}`];
+      return { player, seat, t, pos, cell: cellOf(seat, pos, t) };
+    });
+  });
+  const stacks = new Map<string, number>();
+  const stackIndex = placed.map(({ cell, pos }) => {
+    if (pos === -1) return { i: 0, n: 1 };
+    const key = cell.join(",");
+    const i = stacks.get(key) ?? 0;
+    stacks.set(key, i + 1);
+    return { i, n: 0, key };
+  });
 
   return (
     <div className="board-game">
@@ -101,69 +137,84 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
               className={`ludo-cell ludo-cell--${kind}`}
               style={seat !== undefined ? { background: COLORS[Number(seat)].hex } : undefined}
             >
-              {kind === "star" ? "★" : ""}
+              {kind === "star" ? "★" : kind === "start" ? <i className="ludo-arrow" style={{ transform: `rotate(${Number(seat) * 90}deg)` }}>➤</i> : ""}
             </span>
           );
         })}
         {COLORS.map((color, seat) => (
           <span
             key={color.name}
-            className={`ludo-yard ${state.seats.includes(seat) ? "" : "is-empty"}`}
+            className={`ludo-yard ${state.seats.includes(seat) ? "" : "is-empty"} ${state.seats[state.turn] === seat && !finished ? "is-turn" : ""}`}
             style={{ top: `${(color.yard[0] / 15) * 100}%`, left: `${(color.yard[1] / 15) * 100}%`, background: color.hex }}
           >
-            <span />
+            <span className="ludo-yard-inner">
+              {[0, 1, 2, 3].map((spot) => (
+                <i key={spot} style={{ background: color.hex }} />
+              ))}
+            </span>
           </span>
         ))}
-        <span className="ludo-center" />
-        {state.players.flatMap((player, p) => {
-          const seat = state.seats[p];
-          return state.tokens[player].map((pos, t) => {
-            const [r, c] = cellOf(seat, pos, t);
-            const clickable = player === me && options.includes(t);
-            return (
-              <button
-                key={`${player}-${t}`}
-                type="button"
-                className={`ludo-token ${clickable ? "is-movable" : ""}`}
-                style={{
-                  top: `${((r + 0.5) / 15) * 100}%`,
-                  left: `${((c + 0.5) / 15) * 100}%`,
-                  background: COLORS[seat].hex,
-                }}
-                disabled={!clickable}
-                onClick={() => act({ type: "move", token: t })}
-                aria-label={`${COLORS[seat].name} token ${t + 1}`}
-              />
-            );
-          });
+        <svg className="ludo-center" viewBox="0 0 2 2" preserveAspectRatio="none" aria-hidden="true">
+          <polygon points="0,0 2,0 1,1" fill={COLORS[1].hex} />
+          <polygon points="2,0 2,2 1,1" fill={COLORS[2].hex} />
+          <polygon points="2,2 0,2 1,1" fill={COLORS[3].hex} />
+          <polygon points="0,2 0,0 1,1" fill={COLORS[0].hex} />
+          <circle cx="1" cy="1" r="0.28" fill="#fff" opacity="0.9" />
+          <text x="1" y="1.11" textAnchor="middle" fontSize="0.32">🏠</text>
+        </svg>
+        {placed.map(({ player, seat, t, pos, cell }, idx) => {
+          const [r, c] = cell;
+          const clickable = player === me && options.includes(t);
+          const stack = stackIndex[idx];
+          const count = stack.key ? stacks.get(stack.key)! : 1;
+          const shift = count > 1 ? (stack.i - (count - 1) / 2) * 1.6 : 0;
+          return (
+            <button
+              key={`${player}-${t}`}
+              type="button"
+              className={`ludo-token ${clickable ? "is-movable" : ""} ${count > 1 ? "is-stacked" : ""}`}
+              style={{
+                top: `${((r + 0.5) / 15) * 100}%`,
+                left: `${((c + 0.5) / 15) * 100 + shift}%`,
+                ["--pawn" as string]: COLORS[seat].hex,
+                zIndex: pos === -1 ? 2 : 4 + r,
+              }}
+              disabled={!clickable}
+              onClick={() => act({ type: "move", token: t })}
+              aria-label={`${COLORS[seat].name} token ${t + 1}`}
+            >
+              <span key={pos} className="ludo-token-hop" />
+            </button>
+          );
         })}
       </div>
 
-      <div className="players-strip">
-        {state.players.map((player, p) => (
-          <span key={player} className={`player-chip ${player === current ? "is-turn" : ""}`}>
-            <i style={{ background: COLORS[state.seats[p]].hex }} />
-            {names[player]} · {state.tokens[player].filter((pos) => pos === FINISH).length}/4 home
-          </span>
-        ))}
-      </div>
+      <PlayerChips
+        players={state.players}
+        current={current}
+        names={names}
+        color={(_, p) => COLORS[state.seats[p]].hex}
+        detail={(player) => `${state.tokens[player].filter((pos) => pos === FINISH).length}/4 home`}
+      />
 
       <LogLine log={state.log} names={names} />
       <div className="board-actions">
-        <Dice value={state.dice} />
+        <Dice value={state.dice} nonce={state.rollNo ?? state.log} />
         <button
           type="button"
-          className="primary-btn"
+          className={`primary-btn ${myTurn && state.phase === "roll" ? "is-ready" : ""}`}
           disabled={!myTurn || state.phase !== "roll"}
           onClick={() => act({ type: "roll" })}
         >
           {finished
             ? "Game over"
-            : !myTurn
-              ? `${names[current]}'s turn`
-              : state.phase === "roll"
-                ? "Roll the dice"
-                : "Tap a glowing token"}
+            : busy
+              ? "Moving…"
+              : !myTurn
+                ? `${names[current]}'s turn`
+                : state.phase === "roll"
+                  ? "Roll the dice"
+                  : "Tap a glowing token"}
         </button>
       </div>
     </div>
@@ -178,6 +229,7 @@ export const ludoGame: GameDef<State, Action> = {
   className: "game-card--ludo",
   minPlayers: 2,
   maxPlayers: 4,
+  botDelay: 1500,
   init: (players) => ({
     players,
     seats: SEATS[players.length] ?? SEATS[4],
@@ -193,7 +245,7 @@ export const ludoGame: GameDef<State, Action> = {
     if (action.type === "roll") {
       if (state.phase !== "roll") return state;
       const dice = rollDie();
-      const next = { ...state, dice };
+      const next = { ...state, dice, rollNo: (state.rollNo ?? 0) + 1 };
       if (movable(next, by).length === 0) {
         return { ...next, phase: "roll", turn: nextTurn(state), log: `${by}|rolled ${dice} — no moves` };
       }

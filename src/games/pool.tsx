@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { GameDef, GameViewProps } from "./types";
-import { LogLine } from "./ui";
+import { play } from "./sfx";
+import { LogLine, PlayerChips } from "./ui";
 
 const W = 200;
 const H = 100;
@@ -78,6 +79,12 @@ export function simulate(start: Ball[], angle: number, power: number) {
   const frames: Ball[][] = [];
   const potted: number[] = [];
   let firstHit: number | null = null;
+  // Sounds to play during the replay, keyed by frame index.
+  const events: { frame: number; kind: "clack" | "cushion" | "pocket"; vol: number }[] = [];
+  const note = (kind: "clack" | "cushion" | "pocket", vol: number) => {
+    const frame = frames.length;
+    if (!events.some((e) => e.frame === frame && e.kind === kind)) events.push({ frame, kind, vol: Math.min(1, vol) });
+  };
 
   for (let frame = 0; frame < 2000; frame += 1) {
     let moving = false;
@@ -92,12 +99,13 @@ export function simulate(start: Ball[], angle: number, power: number) {
           b.vx = 0;
           b.vy = 0;
           potted.push(b.id);
+          note("pocket", 1);
           continue;
         }
-        if (b.x < R) { b.x = R; b.vx = -b.vx * 0.85; }
-        if (b.x > W - R) { b.x = W - R; b.vx = -b.vx * 0.85; }
-        if (b.y < R) { b.y = R; b.vy = -b.vy * 0.85; }
-        if (b.y > H - R) { b.y = H - R; b.vy = -b.vy * 0.85; }
+        if (b.x < R) { b.x = R; note("cushion", Math.abs(b.vx) / 4); b.vx = -b.vx * 0.85; }
+        if (b.x > W - R) { b.x = W - R; note("cushion", Math.abs(b.vx) / 4); b.vx = -b.vx * 0.85; }
+        if (b.y < R) { b.y = R; note("cushion", Math.abs(b.vy) / 4); b.vy = -b.vy * 0.85; }
+        if (b.y > H - R) { b.y = H - R; note("cushion", Math.abs(b.vy) / 4); b.vy = -b.vy * 0.85; }
       }
       for (let i = 0; i < balls.length; i += 1) {
         const a = balls[i];
@@ -120,6 +128,7 @@ export function simulate(start: Ball[], angle: number, power: number) {
           const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
           if (rel <= 0) continue;
           const impulse = rel * 0.98;
+          note("clack", 0.25 + rel / 5);
           a.vx -= impulse * nx;
           a.vy -= impulse * ny;
           b.vx += impulse * nx;
@@ -142,65 +151,160 @@ export function simulate(start: Ball[], angle: number, power: number) {
   }
   const end = balls.map(({ id, x, y, potted: p }) => ({ id, x, y, potted: p }));
   frames.push(end);
-  return { frames, end, potted, firstHit };
+  return { frames, end, potted, firstHit, events };
 }
 
 function drawTable(ctx: CanvasRenderingContext2D, scale: number, balls: Ball[], aim: { angle: number; power: number } | null) {
   const pad = 6 * scale;
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.fillStyle = "#7c2d12";
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+  // Wooden rails
+  const wood = ctx.createLinearGradient(0, 0, 0, ch);
+  wood.addColorStop(0, "#8b4513");
+  wood.addColorStop(0.5, "#5c2a0c");
+  wood.addColorStop(1, "#3f1d08");
+  ctx.fillStyle = wood;
   ctx.beginPath();
-  ctx.roundRect(0, 0, ctx.canvas.width, ctx.canvas.height, 10 * scale);
+  ctx.roundRect(0, 0, cw, ch, 10 * scale);
   ctx.fill();
-  ctx.fillStyle = "#15803d";
+  ctx.strokeStyle = "rgba(255,210,150,0.25)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(1.5, 1.5, cw - 3, ch - 3, 9 * scale);
+  ctx.stroke();
+  // Diamonds on the rails
+  ctx.fillStyle = "#f5deb3";
+  for (let k = 1; k < 8; k += 1) {
+    if (k === 4) continue;
+    const x = pad + (W * k * scale) / 8;
+    for (const y of [pad / 2, ch - pad / 2]) {
+      ctx.beginPath();
+      ctx.arc(x, y, 0.7 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  for (let k = 1; k < 4; k += 1) {
+    const y = pad + (H * k * scale) / 4;
+    for (const x of [pad / 2, cw - pad / 2]) {
+      ctx.beginPath();
+      ctx.arc(x, y, 0.7 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Felt with a soft spotlight
+  const felt = ctx.createRadialGradient(pad + (W * scale) / 2, pad + (H * scale) / 2, 10, pad + (W * scale) / 2, pad + (H * scale) / 2, W * scale * 0.65);
+  felt.addColorStop(0, "#1fa055");
+  felt.addColorStop(1, "#0d5c30");
+  ctx.fillStyle = felt;
   ctx.fillRect(pad, pad, W * scale, H * scale);
-  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(pad + 1, pad + 1, W * scale - 2, H * scale - 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(pad + 50 * scale, pad);
   ctx.lineTo(pad + 50 * scale, pad + H * scale);
   ctx.stroke();
-  ctx.fillStyle = "#0b0b0b";
+  ctx.fillStyle = "rgba(255,255,255,0.18)";
+  ctx.beginPath();
+  ctx.arc(pad + 140 * scale, pad + 50 * scale, 0.8 * scale, 0, Math.PI * 2);
+  ctx.fill();
   for (const p of POCKETS) {
+    const px = pad + p.x * scale;
+    const py = pad + p.y * scale;
+    const hole = ctx.createRadialGradient(px, py, 0, px, py, p.r * scale);
+    hole.addColorStop(0, "#000");
+    hole.addColorStop(0.75, "#111");
+    hole.addColorStop(1, "#3a3a3a");
+    ctx.fillStyle = hole;
     ctx.beginPath();
-    ctx.arc(pad + p.x * scale, pad + p.y * scale, p.r * 0.95 * scale, 0, Math.PI * 2);
+    ctx.arc(px, py, p.r * 0.95 * scale, 0, Math.PI * 2);
     ctx.fill();
   }
   const cue = balls.find((b) => b.id === 0 && !b.potted);
   if (aim && cue) {
+    // Guide line to the first ball or cushion in the aim direction
+    const cx = Math.cos(aim.angle);
+    const cy = Math.sin(aim.angle);
+    let reach = 220;
+    let ghost: { x: number; y: number } | null = null;
+    for (const b of balls) {
+      if (b.potted || b.id === 0) continue;
+      const fx = b.x - cue.x;
+      const fy = b.y - cue.y;
+      const along = fx * cx + fy * cy;
+      if (along <= 0) continue;
+      const perp2 = fx * fx + fy * fy - along * along;
+      if (perp2 > 4 * R * R) continue;
+      const hit = along - Math.sqrt(4 * R * R - perp2);
+      if (hit < reach) {
+        reach = hit;
+        ghost = { x: cue.x + cx * hit, y: cue.y + cy * hit };
+      }
+    }
+    const wallT = Math.min(cx > 0 ? (W - R - cue.x) / cx : cx < 0 ? (R - cue.x) / cx : Infinity, cy > 0 ? (H - R - cue.y) / cy : cy < 0 ? (R - cue.y) / cy : Infinity);
+    reach = Math.min(reach, wallT);
     ctx.setLineDash([4 * scale, 3 * scale]);
-    ctx.strokeStyle = "rgba(255,255,255,0.7)";
-    ctx.lineWidth = 0.6 * scale;
+    ctx.strokeStyle = "rgba(255,255,255,0.75)";
+    ctx.lineWidth = 0.5 * scale;
     ctx.beginPath();
     ctx.moveTo(pad + cue.x * scale, pad + cue.y * scale);
-    ctx.lineTo(pad + (cue.x + Math.cos(aim.angle) * 60) * scale, pad + (cue.y + Math.sin(aim.angle) * 60) * scale);
+    ctx.lineTo(pad + (cue.x + cx * reach) * scale, pad + (cue.y + cy * reach) * scale);
     ctx.stroke();
     ctx.setLineDash([]);
+    if (ghost) {
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.beginPath();
+      ctx.arc(pad + ghost.x * scale, pad + ghost.y * scale, R * scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     const back = 4 + aim.power * 14;
-    ctx.strokeStyle = "#d6a76c";
-    ctx.lineWidth = 1.6 * scale;
+    const sx = pad + (cue.x - cx * back) * scale;
+    const sy = pad + (cue.y - cy * back) * scale;
+    const ex = pad + (cue.x - cx * (back + 70)) * scale;
+    const ey = pad + (cue.y - cy * (back + 70)) * scale;
+    const stick = ctx.createLinearGradient(sx, sy, ex, ey);
+    stick.addColorStop(0, "#f8fafc");
+    stick.addColorStop(0.04, "#e8c38f");
+    stick.addColorStop(0.7, "#b07a3c");
+    stick.addColorStop(0.72, "#1f1630");
+    stick.addColorStop(1, "#3b1d0e");
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.lineWidth = 2 * scale;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(pad + (cue.x - Math.cos(aim.angle) * back) * scale, pad + (cue.y - Math.sin(aim.angle) * back) * scale);
-    ctx.lineTo(pad + (cue.x - Math.cos(aim.angle) * (back + 60)) * scale, pad + (cue.y - Math.sin(aim.angle) * (back + 60)) * scale);
+    ctx.moveTo(sx + 2, sy + 3);
+    ctx.lineTo(ex + 2, ey + 3);
     ctx.stroke();
+    ctx.strokeStyle = stick;
+    ctx.lineWidth = 1.7 * scale;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.lineCap = "butt";
   }
   for (const b of balls) {
     if (b.potted) continue;
     const x = pad + b.x * scale;
     const y = pad + b.y * scale;
     const r = R * scale;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(x + r * 0.25, y + r * 0.35, r, r * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
     const color = b.id <= 8 ? COLORS[b.id] : COLORS[b.id - 8];
-    ctx.fillStyle = b.id > 8 ? "#fff" : color;
+    ctx.save();
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.clip();
+    ctx.fillStyle = b.id > 8 ? "#fbfaf5" : color;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
     if (b.id > 8) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.clip();
       ctx.fillStyle = color;
       ctx.fillRect(x - r, y - r * 0.55, r * 2, r * 1.1);
-      ctx.restore();
     }
     if (b.id > 0) {
       ctx.fillStyle = "#fff";
@@ -213,10 +317,13 @@ function drawTable(ctx: CanvasRenderingContext2D, scale: number, balls: Ball[], 
       ctx.textBaseline = "middle";
       ctx.fillText(String(b.id), x, y + 0.3);
     }
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.beginPath();
-    ctx.arc(x - r * 0.35, y - r * 0.35, r * 0.25, 0, Math.PI * 2);
-    ctx.fill();
+    const shade = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.05);
+    shade.addColorStop(0, "rgba(255,255,255,0.55)");
+    shade.addColorStop(0.35, "rgba(255,255,255,0)");
+    shade.addColorStop(1, "rgba(0,0,0,0.4)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.restore();
   }
 }
 
@@ -228,13 +335,14 @@ function PoolView({ state, me, names, act, finished }: GameViewProps<State, Acti
   const shownShot = useRef(state.shotNo);
   const current = state.players[state.turn];
   const myTurn = current === me && !finished && !animating;
-  const scale = 1.8;
+  const scale = 4;
   const width = (W + 12) * scale;
   const height = (H + 12) * scale;
-  const frames = useMemo(
-    () => (state.lastShot ? simulate(state.lastShot.before, state.lastShot.angle, state.lastShot.power).frames : null),
+  const replay = useMemo(
+    () => (state.lastShot ? simulate(state.lastShot.before, state.lastShot.angle, state.lastShot.power) : null),
     [state.lastShot],
   );
+  const frames = replay?.frames ?? null;
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -244,8 +352,11 @@ function PoolView({ state, me, names, act, finished }: GameViewProps<State, Acti
       setAnimating(true);
       let i = 0;
       let raf = 0;
+      const events = replay?.events ?? [];
+      play("clack", 0.8);
       const tick = () => {
         drawTable(ctx, scale, frames[Math.min(i, frames.length - 1)], null);
+        for (const e of events) if (e.frame === i) play(e.kind, e.vol);
         i += 1;
         if (i < frames.length) raf = requestAnimationFrame(tick);
         else {
@@ -285,13 +396,13 @@ function PoolView({ state, me, names, act, finished }: GameViewProps<State, Acti
         onPointerDown={aimAt}
         onPointerMove={(event) => event.buttons && aimAt(event)}
       />
-      <div className="players-strip">
-        {state.players.map((player) => (
-          <span key={player} className={`player-chip ${player === current ? "is-turn" : ""}`}>
-            {names[player]} · {state.groups[player] ?? "open table"} · {left(player)} left
-          </span>
-        ))}
-      </div>
+      <PlayerChips
+        players={state.players}
+        current={current}
+        names={names}
+        color={(_, i) => ["#ec4899", "#8b5cf6"][i]}
+        detail={(player) => `${state.groups[player] ?? "open table"} · ${left(player)} left`}
+      />
       <LogLine log={state.log} names={names} />
       <div className="pool-controls">
         <label>
