@@ -1,43 +1,51 @@
-import { ChevronRight, Lock } from "lucide-react";
-import Avatar from "../components/Avatar";
+import { ChevronRight, Lock, Users } from "lucide-react";
 import { GAMES } from "../data";
 import type { GameId } from "../data";
 import { GAME_ICONS } from "../gameIcons";
+import { ONLINE_GAMES } from "../games/registry";
 
 interface GamesScreenProps {
-  onOpenGame: (game: GameId) => void;
+  onPickGame: (gameId: string) => void;
+  onOpenParty: (game: GameId) => void;
 }
 
-export default function GamesScreen({ onOpenGame }: GamesScreenProps) {
+export default function GamesScreen({ onPickGame, onOpenParty }: GamesScreenProps) {
   return (
     <div className="screen games-screen">
       <header className="page-header">
-        <p className="eyebrow">Take a break together</p>
+        <p className="eyebrow">Solo, with friends or strangers</p>
         <h1>Games</h1>
-        <p className="page-sub">Pick a game and make tonight a little more fun.</p>
+        <p className="page-sub">Chat while you play — tap the bubble inside any game.</p>
       </header>
 
-      <button type="button" className="invite-banner" onClick={() => onOpenGame("truth")}>
-        <span className="invite-avatar">
-          <Avatar initials="P" hue={330} size={46} online />
-        </span>
-        <span className="invite-text">
-          <small>Priya invites you</small>
-          <strong>Let's play Truth or Dare</strong>
-        </span>
-        <span className="invite-join">Join</span>
-      </button>
+      <div className="game-grid">
+        {ONLINE_GAMES.map((game) => (
+          <button key={game.id} type="button" className={`game-card ${game.className}`} onClick={() => onPickGame(game.id)}>
+            <span className="game-card-icon game-card-emoji">{game.emoji}</span>
+            <span className="game-card-body">
+              <strong>{game.title}</strong>
+              <small>{game.tagline}</small>
+            </span>
+            <span className="game-card-cta">
+              {game.soloOnly ? "Solo" : (
+                <>
+                  <Users size={12} /> {game.minPlayers}-{game.maxPlayers}
+                </>
+              )}
+              <ChevronRight size={13} />
+            </span>
+          </button>
+        ))}
+      </div>
 
+      <div className="section-head section-head--spaced">
+        <h3>Couple games</h3>
+      </div>
       <div className="game-grid">
         {GAMES.map((game) => {
           const Icon = GAME_ICONS[game.id];
           return (
-            <button
-              key={game.id}
-              type="button"
-              className={`game-card ${game.className}`}
-              onClick={() => onOpenGame(game.id)}
-            >
+            <button key={game.id} type="button" className={`game-card ${game.className}`} onClick={() => onOpenParty(game.id)}>
               <span className="game-card-icon">
                 <Icon size={22} />
               </span>
@@ -54,7 +62,7 @@ export default function GamesScreen({ onOpenGame }: GamesScreenProps) {
       </div>
 
       <p className="games-note">
-        <Lock size={13} /> Games are private to you and your partner.
+        <Lock size={13} /> Couple games are played together on one phone.
       </p>
     </div>
   );

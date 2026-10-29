@@ -1,78 +1,100 @@
 import { useState } from "react";
-import { Check, Heart, MessageCircle, Search, SearchX, UserPlus, X } from "lucide-react";
-import Avatar from "../components/Avatar";
-import type { Friend, FriendRequest } from "../data";
+import type { FormEvent } from "react";
+import { AtSign, Ban, Check, Copy, Flag, Heart, MessageCircle, UserPlus, X } from "lucide-react";
+import { UserAvatar } from "../components/Avatar";
+import SafetySheet from "../components/SafetySheet";
+import { api, dmId, friendIds, isOnline } from "../backend/store";
+import { attempt, useApp } from "../context";
 
-interface FriendsScreenProps {
-  friends: Friend[];
-  requests: FriendRequest[];
-  onAccept: (request: FriendRequest) => void;
-  onDecline: (id: string) => void;
-  onMessage: (friendId: string) => void;
-}
-
-export default function FriendsScreen({
-  friends,
-  requests,
-  onAccept,
-  onDecline,
-  onMessage,
-}: FriendsScreenProps) {
+export default function FriendsScreen({ onSignUp }: { onSignUp: () => void }) {
+  const { db, me, notify, openChat, nameOf } = useApp();
+  const [username, setUsername] = useState("");
   const [query, setQuery] = useState("");
-  const needle = query.trim().toLowerCase();
+  const [safety, setSafety] = useState<{ id: string; mode: "block" | "report" } | null>(null);
 
-  const visibleRequests = requests.filter((request) =>
-    request.name.toLowerCase().includes(needle),
-  );
-  const visibleFriends = friends.filter((friend) => friend.name.toLowerCase().includes(needle));
-  const noMatches = needle.length > 0 && visibleFriends.length === 0 && visibleRequests.length === 0;
+  const incoming = db.requests.filter((r) => r.to === me.id && db.users[r.from] && !db.users[r.from].suspended);
+  const sent = db.requests.filter((r) => r.from === me.id);
+  const needle = query.trim().toLowerCase();
+  const friends = friendIds(db, me.id).filter((id) => {
+    const user = db.users[id];
+    return !needle || user?.displayName.toLowerCase().includes(needle) || user?.username.includes(needle);
+  });
+  const blocked = db.blocks.filter((b) => b.by === me.id);
+
+  const sendRequest = (event: FormEvent) => {
+    event.preventDefault();
+    if (!username.trim()) return;
+    attempt(notify, () => {
+      const { target, accepted } = api.sendFriendRequest(me.id, username);
+      notify(accepted ? `You and ${target.displayName} are now friends` : `Request sent to @${target.username}`);
+      setUsername("");
+    });
+  };
+
+  const copyUsername = () => {
+    void navigator.clipboard?.writeText(`@${me.username}`).then(
+      () => notify("Username copied"),
+      () => notify(`Your username is @${me.username}`),
+    );
+  };
 
   return (
     <div className="screen friends-screen">
       <header className="page-header">
         <p className="eyebrow">Your circle</p>
         <h1>Friends</h1>
-        <p className="page-sub">Connect with the people who matter most.</p>
+        <button type="button" className="my-handle" onClick={copyUsername}>
+          <AtSign size={13} /> {me.username} <Copy size={12} />
+        </button>
       </header>
 
-      <label className="search-box">
-        <Search size={17} />
-        <input
-          type="search"
-          placeholder="Search friends by name"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search friends"
-        />
-        {query && (
-          <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
-            <X size={15} />
-          </button>
-        )}
-      </label>
+      {me.isGuest && (
+        <button type="button" className="guest-banner" onClick={onSignUp}>
+          <strong>You're a guest</strong>
+          <span>Sign up so you don't lose your friends and chats.</span>
+        </button>
+      )}
 
-      {requests.length > 0 && visibleRequests.length > 0 && (
+      <form className="add-friend" onSubmit={sendRequest}>
+        <label className="search-box">
+          <UserPlus size={17} />
+          <input
+            placeholder="Add friend by @username"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            aria-label="Friend's username"
+            autoCapitalize="none"
+          />
+        </label>
+        <button type="submit" className="accept-btn" disabled={!username.trim()}>
+          Send
+        </button>
+      </form>
+
+      {incoming.length > 0 && (
         <section className="friends-section">
           <div className="section-head">
             <h3>Friend requests</h3>
-            <span className="count-pill">{visibleRequests.length}</span>
+            <span className="count-pill">{incoming.length}</span>
           </div>
           <div className="request-list">
-            {visibleRequests.map((request) => (
+            {incoming.map((request) => (
               <div key={request.id} className="request-card">
-                <Avatar initials={request.initials} hue={request.hue} size={46} />
+                <UserAvatar id={request.from} size={46} />
                 <div className="request-body">
-                  <strong>{request.name}</strong>
-                  <span>
-                    <UserPlus size={12} /> {request.mutual} mutual friends
-                  </span>
+                  <strong>{nameOf(request.from)}</strong>
+                  <span>@{db.users[request.from].username}</span>
                 </div>
                 <div className="request-actions">
                   <button
                     type="button"
                     className="accept-btn"
-                    onClick={() => onAccept(request)}
-                    aria-label={`Accept ${request.name}'s friend request`}
+                    onClick={() => {
+                      api.acceptRequest(request.id);
+                      notify(`${nameOf(request.from)} is now your friend`);
+                      if (me.isGuest) window.setTimeout(() => notify("Tip: sign up so you never lose your friends"), 2600);
+                    }}
+                    aria-label={`Accept ${nameOf(request.from)}'s friend request`}
                   >
                     <Check size={16} strokeWidth={3} />
                     <span>Accept</span>
@@ -80,12 +102,42 @@ export default function FriendsScreen({
                   <button
                     type="button"
                     className="decline-btn"
-                    onClick={() => onDecline(request.id)}
-                    aria-label={`Decline ${request.name}'s friend request`}
+                    onClick={() => api.declineRequest(request.id)}
+                    aria-label={`Decline ${nameOf(request.from)}'s friend request`}
                   >
                     <X size={16} />
                   </button>
+                  <button
+                    type="button"
+                    className="decline-btn"
+                    onClick={() => setSafety({ id: request.from, mode: "block" })}
+                    aria-label={`Block ${nameOf(request.from)}`}
+                  >
+                    <Ban size={15} />
+                  </button>
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {sent.length > 0 && (
+        <section className="friends-section">
+          <div className="section-head">
+            <h3>Sent requests</h3>
+          </div>
+          <div className="card list-card">
+            {sent.map((request) => (
+              <div key={request.id} className="friend-row">
+                <UserAvatar id={request.to} size={40} />
+                <div className="friend-body">
+                  <strong>{nameOf(request.to)}</strong>
+                  <span className="friend-status">Waiting for them to accept</span>
+                </div>
+                <button type="button" className="text-link" onClick={() => api.declineRequest(request.id)}>
+                  Cancel
+                </button>
               </div>
             ))}
           </div>
@@ -95,52 +147,76 @@ export default function FriendsScreen({
       <section className="friends-section">
         <div className="section-head">
           <h3>All friends</h3>
-          <span className="count-pill">{visibleFriends.length}</span>
+          <span className="count-pill">{friends.length}</span>
         </div>
+        {friendIds(db, me.id).length > 4 && (
+          <label className="search-box search-box--small">
+            <input type="search" placeholder="Search friends" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </label>
+        )}
         <div className="card list-card friend-list">
-          {visibleFriends.map((friend) => (
-            <div key={friend.id} className="friend-row">
-              <Avatar initials={friend.initials} hue={friend.hue} size={46} online={friend.online} />
+          {friends.map((id) => (
+            <div key={id} className="friend-row">
+              <UserAvatar id={id} size={46} />
               <div className="friend-body">
                 <strong>
-                  {friend.name}
-                  {friend.partner && (
+                  {nameOf(id)}
+                  {me.partnerId === id && (
                     <span className="partner-badge">
                       <Heart size={10} fill="currentColor" /> Partner
                     </span>
                   )}
+                  {db.users[id]?.isBot && <span className="bot-tag">demo bot</span>}
                 </strong>
                 <span className="friend-status">
-                  {friend.online ? <span className="online-dot" /> : null}
-                  {friend.online ? "Online now" : "Offline"}
+                  {isOnline(db, id) ? <span className="online-dot" /> : null}
+                  {isOnline(db, id) ? "Online now" : `@${db.users[id]?.username}`}
                 </span>
               </div>
-              <button
-                type="button"
-                className="message-btn"
-                onClick={() => onMessage(friend.id)}
-                aria-label={`Message ${friend.name}`}
-              >
+              <button type="button" className="icon-ghost" onClick={() => setSafety({ id, mode: "report" })} aria-label={`Report ${nameOf(id)}`}>
+                <Flag size={15} />
+              </button>
+              <button type="button" className="icon-ghost" onClick={() => setSafety({ id, mode: "block" })} aria-label={`Block ${nameOf(id)}`}>
+                <Ban size={15} />
+              </button>
+              <button type="button" className="message-btn" onClick={() => openChat(dmId(me.id, id))} aria-label={`Message ${nameOf(id)}`}>
                 <MessageCircle size={17} />
               </button>
             </div>
           ))}
-          {visibleFriends.length === 0 && !noMatches && (
+          {friends.length === 0 && (
             <div className="friends-empty">
               <UserPlus size={18} />
-              <p>No friends yet. Accept a request to get started.</p>
+              <p>No friends yet. Add someone by their username above.</p>
             </div>
           )}
         </div>
       </section>
 
-      {noMatches && (
-        <div className="no-results">
-          <SearchX size={22} />
-          <strong>No one found</strong>
-          <p>Try another name or send a new invite.</p>
-        </div>
+      {blocked.length > 0 && (
+        <section className="friends-section">
+          <div className="section-head">
+            <h3>Blocked</h3>
+            <span className="count-pill">{blocked.length}</span>
+          </div>
+          <div className="card list-card">
+            {blocked.map((block) => (
+              <div key={block.target} className="friend-row">
+                <UserAvatar id={block.target} size={40} showOnline={false} />
+                <div className="friend-body">
+                  <strong>{nameOf(block.target)}</strong>
+                  <span className="friend-status">Reason: {block.reason}</span>
+                </div>
+                <button type="button" className="text-link" onClick={() => { api.unblock(me.id, block.target); notify(`Unblocked ${nameOf(block.target)}`); }}>
+                  Unblock
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
+
+      {safety && <SafetySheet targetId={safety.id} mode={safety.mode} onClose={() => setSafety(null)} />}
     </div>
   );
 }

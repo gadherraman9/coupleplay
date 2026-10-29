@@ -1,42 +1,34 @@
-import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
-import { ArrowLeft, Gamepad2, Lock, Send, Sparkles } from "lucide-react";
-import Avatar from "../components/Avatar";
-import type { Friend, GameId, Message } from "../data";
+import { useState } from "react";
+import { ArrowLeft, Ban, Flag, Gamepad2, Heart, HeartOff, MoreVertical, UserMinus } from "lucide-react";
+import { UserAvatar } from "../components/Avatar";
+import ConversationView from "../components/ConversationView";
+import SafetySheet from "../components/SafetySheet";
+import Sheet from "../components/Sheet";
+import { api, areFriends, hasBlocked, isOnline, otherInDm } from "../backend/store";
+import { useApp } from "../context";
+import { ONLINE_GAMES } from "../games/registry";
 
-interface ChatScreenProps {
-  friend: Friend;
-  messages: Message[];
-  onBack: () => void;
-  onSend: (text: string) => void;
-  onOpenGame: (game: GameId) => void;
-}
+const QUICK_REPLIES = ["Miss you 💕", "Let's play a game?", "You're my favorite"];
 
-const QUICK_REPLIES = ["I miss you", "Let's play Truth or Dare", "You're my favorite"];
+export default function ChatScreen({ convId, onBack }: { convId: string; onBack: () => void }) {
+  const { db, me, notify, nameOf, playGame } = useApp();
+  const other = otherInDm(convId, me.id);
+  const user = db.users[other];
+  const [menu, setMenu] = useState(false);
+  const [games, setGames] = useState(false);
+  const [safety, setSafety] = useState<"block" | "report" | null>(null);
+  const friends = areFriends(db, me.id, other);
+  const iBlocked = hasBlocked(db, me.id, other);
+  const theyBlocked = hasBlocked(db, other, me.id);
+  const isPartner = me.partnerId === other;
 
-export default function ChatScreen({ friend, messages, onBack, onSend, onOpenGame }: ChatScreenProps) {
-  const [draft, setDraft] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length]);
-
-  const submitDraft = () => {
-    const text = draft.trim();
-    if (!text) return;
-    onSend(text);
-    setDraft("");
-  };
-
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    submitDraft();
-  };
-
-  const sendQuickReply = (text: string) => {
-    onSend(text);
-  };
+  const blockedReason = iBlocked
+    ? "You blocked this person. Unblock them from the Friends tab."
+    : theyBlocked
+      ? "You can't reply to this conversation."
+      : !friends
+        ? "You're not friends anymore. Send a friend request to chat again."
+        : undefined;
 
   return (
     <div className="chat-screen">
@@ -45,95 +37,90 @@ export default function ChatScreen({ friend, messages, onBack, onSend, onOpenGam
           <ArrowLeft size={19} />
         </button>
         <div className="chat-person">
-          <Avatar initials={friend.initials} hue={friend.hue} size={40} online={friend.online} />
+          <UserAvatar id={other} size={40} />
           <div>
-            <strong>{friend.name}</strong>
-            <span className={friend.online ? "is-online" : ""}>
-              {friend.online ? "Online now" : friend.partner ? "Your partner" : "Friend"}
+            <strong>
+              {nameOf(other)} {user?.isBot && <span className="bot-tag">demo bot</span>}
+            </strong>
+            <span className={isOnline(db, other) ? "is-online" : ""}>
+              {isOnline(db, other) ? "Online now" : isPartner ? "Your partner" : `@${user?.username ?? "unknown"}`}
             </span>
           </div>
         </div>
-        <span className="chat-lock" title="Private chat">
-          <Lock size={15} />
-        </span>
+        {friends && !blockedReason && (
+          <button type="button" className="round-btn" onClick={() => setGames(true)} aria-label="Play a game together">
+            <Gamepad2 size={18} />
+          </button>
+        )}
+        <button type="button" className="round-btn" onClick={() => setMenu(true)} aria-label="More options">
+          <MoreVertical size={18} />
+        </button>
       </header>
 
-      <div className="chat-body">
-        <div className="chat-day">Today</div>
+      <ConversationView convId={convId} blockedReason={blockedReason} emptyTitle={`Say hi to ${nameOf(other)}`} quickReplies={QUICK_REPLIES} />
 
-        {messages.length === 0 && (
-          <div className="chat-empty">
-            <span>
-              <Sparkles size={20} />
-            </span>
-            <strong>Say hi to {friend.name}</strong>
-            <p>This chat is private. Send the first message and break the ice.</p>
-          </div>
-        )}
-
-        {messages.map((message) => {
-          if (message.invite) {
-            return (
-              <div key={message.id} className="msg msg--them">
-                <div className="invite-card">
-                  <span className="invite-card-icon">
-                    <Gamepad2 size={19} />
-                  </span>
-                  <div className="invite-card-body">
-                    <small>Game invite</small>
-                    <strong>{message.invite.title}</strong>
-                    <p>{message.invite.subtitle}</p>
-                  </div>
-                  <button type="button" onClick={() => onOpenGame(message.invite!.game)}>
-                    Play
-                  </button>
-                </div>
-                <span className="msg-time">{message.time}</span>
-              </div>
-            );
-          }
-          return (
-            <div key={message.id} className={`msg msg--${message.from}`}>
-              <div className="bubble">{message.text}</div>
-              <span className="msg-time">{message.time}</span>
-            </div>
-          );
-        })}
-        <div ref={endRef} />
-      </div>
-
-      <div className="chat-composer">
-        <div className="quick-replies">
-          {QUICK_REPLIES.map((reply) => (
-            <button key={reply} type="button" onClick={() => sendQuickReply(reply)}>
-              {reply}
+      {menu && (
+        <Sheet title={nameOf(other)} onClose={() => setMenu(false)}>
+          <div className="menu-list">
+            {friends && (
+              <button
+                type="button"
+                onClick={() => {
+                  api.setPartner(me.id, isPartner ? undefined : other);
+                  notify(isPartner ? "Partner removed" : `${nameOf(other)} is now your partner 💞`);
+                  setMenu(false);
+                }}
+              >
+                {isPartner ? <HeartOff size={18} /> : <Heart size={18} />}
+                {isPartner ? "Remove as partner" : "Set as my partner"}
+              </button>
+            )}
+            {friends && (
+              <button
+                type="button"
+                onClick={() => {
+                  api.unfriend(me.id, other);
+                  notify(`Removed ${nameOf(other)} from friends`);
+                  setMenu(false);
+                }}
+              >
+                <UserMinus size={18} /> Unfriend
+              </button>
+            )}
+            {!iBlocked && (
+              <button type="button" className="is-danger" onClick={() => { setMenu(false); setSafety("block"); }}>
+                <Ban size={18} /> Block
+              </button>
+            )}
+            <button type="button" className="is-danger" onClick={() => { setMenu(false); setSafety("report"); }}>
+              <Flag size={18} /> Report
             </button>
-          ))}
-        </div>
-        <form onSubmit={handleSubmit}>
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                submitDraft();
-              }
-            }}
-            placeholder={`Message ${friend.name}...`}
-            aria-label={`Message ${friend.name}`}
-            maxLength={500}
-          />
-          <button
-            type="submit"
-            className="send-btn"
-            aria-label="Send message"
-            disabled={!draft.trim()}
-          >
-            <Send size={18} />
-          </button>
-        </form>
-      </div>
+          </div>
+        </Sheet>
+      )}
+
+      {games && (
+        <Sheet title={`Play with ${nameOf(other)}`} onClose={() => setGames(false)}>
+          <div className="mini-games mini-games--sheet">
+            {ONLINE_GAMES.filter((g) => !g.soloOnly).map((game) => (
+              <button
+                key={game.id}
+                type="button"
+                className={`mini-game ${game.className}`}
+                onClick={() => {
+                  playGame(game.id, [other], convId);
+                  setGames(false);
+                }}
+              >
+                <span>{game.emoji}</span>
+                <small>{game.title}</small>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+
+      {safety && <SafetySheet targetId={other} mode={safety} onClose={() => setSafety(null)} onDone={safety === "block" ? onBack : undefined} />}
     </div>
   );
 }

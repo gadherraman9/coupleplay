@@ -1,48 +1,42 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Check, Gamepad2, Heart, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Gamepad2, Heart, Lock, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import hero from "../assets/coupleplay-hero.jpg";
+import { api } from "../backend/store";
 
-interface LoginScreenProps {
-  onLogin: () => void;
-}
+type Mode = "welcome" | "signup" | "login";
 
-function GoogleMark() {
-  return (
-    <svg className="google-mark" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47a5.57 5.57 0 0 1-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3a7.19 7.19 0 0 1-10.72-3.78H1.32v3.09A12 12 0 0 0 12 24z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.35 14.31a7.2 7.2 0 0 1 0-4.62V6.6H1.32a12 12 0 0 0 0 10.8l4.03-3.09z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0A12 12 0 0 0 1.32 6.6l4.03 3.09A7.17 7.17 0 0 1 12 4.75z"
-      />
-    </svg>
-  );
-}
-
-export default function LoginScreen({ onLogin }: LoginScreenProps) {
+export default function LoginScreen() {
+  const [mode, setMode] = useState<Mode>("welcome");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
-  const [error, setError] = useState(false);
+  const [ageError, setAgeError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!ageConfirmed) {
-      setError(true);
-      return;
-    }
+  const needAge = () => {
+    if (ageConfirmed) return false;
+    setAgeError(true);
+    return true;
+  };
+
+  const run = async (fn: () => Promise<unknown>) => {
     setLoading(true);
-    window.setTimeout(onLogin, 750);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setLoading(false);
+    }
+  };
+
+  const submitAccount = (event: FormEvent) => {
+    event.preventDefault();
+    if (mode === "signup" && needAge()) return;
+    void run(() => (mode === "signup" ? api.signUp(username, password, displayName) : api.logIn(username, password)));
   };
 
   return (
@@ -73,57 +67,113 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         <p>Connect · Play · Chat · Create Memories</p>
       </header>
 
-      <div className="login-hero">
-        <img src={hero} alt="A couple sharing earbuds and looking at a phone together" />
-        <span className="hero-pill">
-          <Heart size={12} fill="currentColor" />
-          Made for two
-        </span>
-      </div>
+      {mode === "welcome" ? (
+        <>
+          <div className="login-hero">
+            <img src={hero} alt="A couple sharing earbuds and looking at a phone together" />
+            <span className="hero-pill">
+              <Heart size={12} fill="currentColor" />
+              Made for two
+            </span>
+          </div>
 
-      <div className="login-chips" aria-hidden="true">
-        <span>
-          <ShieldCheck size={13} /> 18+ only
-        </span>
-        <span>
-          <Lock size={13} /> Private chats
-        </span>
-        <span>
-          <Gamepad2 size={13} /> Game nights
-        </span>
-      </div>
+          <div className="login-chips" aria-hidden="true">
+            <span>
+              <ShieldCheck size={13} /> 18+ only
+            </span>
+            <span>
+              <Lock size={13} /> Private chats
+            </span>
+            <span>
+              <Gamepad2 size={13} /> 6 games
+            </span>
+          </div>
 
-      <form className="login-form" onSubmit={handleSubmit} noValidate>
-        <label className={`age-confirm ${error ? "has-error" : ""}`}>
-          <input
-            type="checkbox"
-            checked={ageConfirmed}
-            onChange={(event) => {
-              setAgeConfirmed(event.target.checked);
-              if (error) setError(false);
-            }}
-          />
-          <span className="checkbox-ui">
-            <Check size={12} strokeWidth={3.2} />
-          </span>
-          <span>I confirm I am 18 years or older</span>
-        </label>
+          <div className="login-form">
+            <label className={`age-confirm ${ageError ? "has-error" : ""}`}>
+              <input
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(event) => {
+                  setAgeConfirmed(event.target.checked);
+                  setAgeError(false);
+                }}
+              />
+              <span className="checkbox-ui">
+                <Check size={12} strokeWidth={3.2} />
+              </span>
+              <span>I confirm I am 18 years or older</span>
+            </label>
+            {ageError && (
+              <p className="login-error" role="alert">
+                Please confirm you're 18+ to continue.
+              </p>
+            )}
+            {error && <p className="login-error" role="alert">{error}</p>}
 
-        {error && (
-          <p className="login-error" role="alert">
-            Please confirm you're 18+ to continue.
-          </p>
-        )}
-
-        <button className="google-btn" type="submit" disabled={loading}>
-          {loading ? <span className="spinner" aria-hidden="true" /> : <GoogleMark />}
-          {loading ? "Signing you in..." : "Continue with Google"}
-        </button>
-
-        <p className="login-legal">
-          By continuing you agree to our <span>Terms</span> &amp; <span>Privacy Policy</span>.
-        </p>
-      </form>
+            <button
+              className="google-btn guest-btn"
+              type="button"
+              disabled={loading}
+              onClick={() => !needAge() && void run(() => api.continueAsGuest())}
+            >
+              {loading ? <span className="spinner" aria-hidden="true" /> : <UserRound size={18} />}
+              Play as guest
+            </button>
+            <button className="primary-btn" type="button" onClick={() => !needAge() && setMode("signup")}>
+              Create account
+            </button>
+            <button className="text-link login-switch" type="button" onClick={() => setMode("login")}>
+              I already have an account — Log in
+            </button>
+            <p className="login-legal">
+              Guests get a random name. Sign up any time to keep your friends and chats.
+            </p>
+          </div>
+        </>
+      ) : (
+        <form className="login-form account-form" onSubmit={submitAccount}>
+          <button type="button" className="round-btn" onClick={() => setMode("welcome")} aria-label="Back">
+            <ArrowLeft size={18} />
+          </button>
+          <h2>{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
+          <label className="field">
+            <span>Username</span>
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="e.g. rama_22"
+              autoComplete="username"
+              autoCapitalize="none"
+              required
+            />
+          </label>
+          {mode === "signup" && (
+            <label className="field">
+              <span>Display name</span>
+              <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="What friends see" maxLength={24} />
+            </label>
+          )}
+          <label className="field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              minLength={6}
+              required
+            />
+          </label>
+          {error && <p className="login-error" role="alert">{error}</p>}
+          <button className="primary-btn" type="submit" disabled={loading}>
+            {loading ? "Please wait…" : mode === "signup" ? "Sign up" : "Log in"}
+          </button>
+          <button className="text-link login-switch" type="button" onClick={() => setMode(mode === "signup" ? "login" : "signup")}>
+            {mode === "signup" ? "Have an account? Log in" : "New here? Create an account"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

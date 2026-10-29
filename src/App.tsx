@@ -1,133 +1,135 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ShieldAlert } from "lucide-react";
 import BottomNav from "./components/BottomNav";
+import type { Tab } from "./components/BottomNav";
+import GameHost from "./components/GameHost";
+import GameModeSheet from "./components/GameModeSheet";
 import GameOverlay from "./components/GameOverlay";
+import Matchmaking from "./components/Matchmaking";
 import StatusBar from "./components/StatusBar";
+import { useBotBrain } from "./backend/bots";
+import { api, friendIds, getDB, useDB, useSessionId } from "./backend/store";
+import { AppContext, attempt } from "./context";
+import type { AppCtx } from "./context";
+import type { GameId } from "./data";
+import { botName, gameById } from "./games/registry";
 import ChatScreen from "./screens/ChatScreen";
-import ChatsScreen from "./screens/ChatsScreen";
+import ChatsScreen, { unreadCount } from "./screens/ChatsScreen";
 import FriendsScreen from "./screens/FriendsScreen";
 import GamesScreen from "./screens/GamesScreen";
 import HomeScreen from "./screens/HomeScreen";
 import LoginScreen from "./screens/LoginScreen";
-import {
-  FRIENDS,
-  INITIAL_CONVERSATIONS,
-  INITIAL_REQUESTS,
-  REPLY_POOL,
-  nowTime,
-} from "./data";
-import type { Conversation, Friend, FriendRequest, GameId, Message, Tab } from "./data";
+import ProfileScreen from "./screens/ProfileScreen";
+import RoomsScreen from "./screens/RoomsScreen";
+import ShopScreen from "./screens/ShopScreen";
+import StrangerScreen from "./screens/StrangerScreen";
+import { appThemeStyle, isDarkTheme } from "./themes";
+
+type Overlay = { kind: "chat"; convId: string } | { kind: "rooms" } | { kind: "strangers" } | { kind: "shop" } | null;
 
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const db = useDB();
+  const sessionId = useSessionId();
+  const me = sessionId ? db.users[sessionId] : undefined;
   const [tab, setTab] = useState<Tab>("home");
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [activeGame, setActiveGame] = useState<GameId | null>(null);
-  const [dailyTaskDone, setDailyTaskDone] = useState(false);
-  const [hearts, setHearts] = useState(120);
-  const [streak, setStreak] = useState(5);
-  const [friends, setFriends] = useState<Friend[]>(FRIENDS);
-  const [requests, setRequests] = useState<FriendRequest[]>(INITIAL_REQUESTS);
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS);
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [gameSession, setGameSession] = useState<string | null>(null);
+  const [partyGame, setPartyGame] = useState<GameId | null>(null);
+  const [modeSheet, setModeSheet] = useState<string | null>(null);
+  const [matching, setMatching] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useBotBrain(db, me?.id ?? null);
+
   useEffect(() => {
-    return () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    };
-  }, []);
+    if (!me) return;
+    api.heartbeat(me.id);
+    const timer = window.setInterval(() => api.heartbeat(me.id), 20_000);
+    return () => window.clearInterval(timer);
+  }, [me?.id]);
+
+  useEffect(() => {
+    if (sessionId && !me) api.logOut();
+  }, [sessionId, me]);
+
+  useEffect(() => {
+    if (!me) {
+      setTab("home");
+      setOverlay(null);
+      setGameSession(null);
+    }
+  }, [me]);
 
   const notify = useCallback((message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2400);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
+
+  const nameOf = useCallback(
+    (id: string) => (id.startsWith("ai:") ? botName(id) : db.users[id]?.displayName ?? "Unknown"),
+    [db.users],
+  );
+
+  const playGame = useCallback(
+    (gameId: string, opponents: string[], convId?: string) => {
+      const def = gameById(gameId);
+      if (!def || !me) return;
+      if (def.soloOnly) {
+        const existing = getDB().games.find((g) => g.game === gameId && g.players.length === 1 && g.players[0] === me.id);
+        if (existing) {
+          setGameSession(existing.id);
+          return;
+        }
+      }
+      const players = [me.id, ...opponents];
+      attempt(notify, () => {
+        const session = api.createGame(gameId, players, me.id, def.init(players), convId);
+        if (convId?.startsWith("dm:")) {
+          api.sendMessage(me.id, convId, { kind: "invite", invite: { game: gameId, sessionId: session.id, title: def.title } });
+        }
+        setGameSession(session.id);
+      });
+    },
+    [me, notify],
+  );
+
+  const ctx = useMemo<AppCtx | null>(
+    () =>
+      me
+        ? {
+            db,
+            me,
+            notify,
+            nameOf,
+            playGame,
+            openChat: (convId: string) => {
+              setOverlay({ kind: "chat", convId });
+              setGameSession(null);
+            },
+            openGame: (id: string) => setGameSession(id),
+          }
+        : null,
+    [db, me, notify, nameOf, playGame],
+  );
+
+  const badges = useMemo(() => {
+    if (!me) return {};
+    const friends = friendIds(db, me.id);
+    const chats = friends.reduce(
+      (sum, id) => sum + unreadCount(db.messages, db.reads, me.id, `dm:${[me.id, id].sort().join(":")}`),
+      0,
+    );
+    return { chats, friends: db.requests.filter((r) => r.to === me.id).length };
+  }, [db, me]);
 
   const switchTab = (next: Tab) => {
     setTab(next);
-    setActiveChatId(null);
+    setOverlay(null);
   };
 
-  const openChat = (friendId: string) => {
-    setConversations((current) =>
-      current.some((conversation) => conversation.friendId === friendId)
-        ? current
-        : [...current, { friendId, messages: [] }],
-    );
-    setTab("chats");
-    setActiveChatId(friendId);
-  };
-
-  const sendMessage = (friendId: string, text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    const outgoing: Message = {
-      id: Date.now(),
-      from: "me",
-      text: trimmed,
-      time: nowTime(),
-    };
-
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.friendId === friendId
-          ? { ...conversation, messages: [...conversation.messages, outgoing] }
-          : conversation,
-      ),
-    );
-
-    window.setTimeout(() => {
-      const reply: Message = {
-        id: Date.now(),
-        from: "them",
-        text: REPLY_POOL[Math.floor(Math.random() * REPLY_POOL.length)],
-        time: nowTime(),
-      };
-      setConversations((current) =>
-        current.map((conversation) =>
-          conversation.friendId === friendId
-            ? { ...conversation, messages: [...conversation.messages, reply] }
-            : conversation,
-        ),
-      );
-    }, 1400);
-  };
-
-  const completeTask = () => {
-    if (dailyTaskDone) return;
-    setDailyTaskDone(true);
-    setHearts((value) => value + 10);
-    setStreak((value) => value + 1);
-    notify("Daily task complete — +10 hearts");
-  };
-
-  const acceptRequest = (request: FriendRequest) => {
-    setRequests((current) => current.filter((item) => item.id !== request.id));
-    setFriends((current) => [
-      ...current,
-      {
-        id: request.id,
-        name: request.name,
-        initials: request.initials,
-        hue: request.hue,
-      },
-    ]);
-    notify(`${request.name} is now your friend`);
-  };
-
-  const declineRequest = (id: string) => {
-    setRequests((current) => current.filter((item) => item.id !== id));
-    notify("Friend request declined");
-  };
-
-  const activeFriend = activeChatId
-    ? friends.find((friend) => friend.id === activeChatId)
-    : undefined;
-  const activeConversation = activeChatId
-    ? conversations.find((conversation) => conversation.friendId === activeChatId)
-    : undefined;
+  const themeId = me?.appTheme ?? "rose";
 
   return (
     <div className="site">
@@ -136,71 +138,71 @@ export default function App() {
       <div className="site-glow site-glow--three" aria-hidden="true" />
 
       <main className="phone">
-        <div className="phone-screen">
+        <div className={`phone-screen ${isDarkTheme(themeId) ? "theme-dark" : ""}`} style={appThemeStyle(themeId)}>
           <div className="dynamic-island" aria-hidden="true">
             <span />
           </div>
-          <StatusBar light={!loggedIn} />
-          {loggedIn && !activeChatId && !activeGame && (
-            <div className="top-fade" aria-hidden="true" />
-          )}
+          <StatusBar light={!me || isDarkTheme(themeId)} />
+          {me && !overlay && !gameSession && <div className="top-fade" aria-hidden="true" />}
 
           <div className="app">
-            {!loggedIn ? (
-              <LoginScreen onLogin={() => setLoggedIn(true)} />
+            {!me || !ctx ? (
+              <LoginScreen />
+            ) : me.suspended ? (
+              <div className="suspended">
+                <ShieldAlert size={42} />
+                <h2>Account suspended</h2>
+                <p>Many people reported this account, so it has been suspended automatically. If you think this is a mistake, contact support.</p>
+                <button type="button" className="primary-btn" onClick={() => api.logOut()}>
+                  Log out
+                </button>
+              </div>
             ) : (
-              <>
-                {activeFriend && activeConversation ? (
-                  <ChatScreen
-                    friend={activeFriend}
-                    messages={activeConversation.messages}
-                    onBack={() => setActiveChatId(null)}
-                    onSend={(text) => sendMessage(activeFriend.id, text)}
-                    onOpenGame={setActiveGame}
-                  />
+              <AppContext.Provider value={ctx}>
+                {overlay?.kind === "chat" ? (
+                  <ChatScreen key={overlay.convId} convId={overlay.convId} onBack={() => setOverlay(null)} />
+                ) : overlay?.kind === "rooms" ? (
+                  <RoomsScreen onBack={() => setOverlay(null)} />
+                ) : overlay?.kind === "strangers" ? (
+                  <StrangerScreen onBack={() => setOverlay(null)} />
+                ) : overlay?.kind === "shop" ? (
+                  <ShopScreen onBack={() => setOverlay(null)} />
                 ) : (
                   <div className="screen-view" key={tab}>
                     {tab === "home" && (
                       <HomeScreen
-                        dailyTaskDone={dailyTaskDone}
-                        hearts={hearts}
-                        streak={streak}
-                        onCompleteTask={completeTask}
-                        onOpenGame={setActiveGame}
-                        onOpenChat={openChat}
                         onGoGames={() => switchTab("games")}
+                        onOpenStrangers={() => setOverlay({ kind: "strangers" })}
+                        onOpenRooms={() => setOverlay({ kind: "rooms" })}
+                        onOpenShop={() => setOverlay({ kind: "shop" })}
+                        onPickGame={setModeSheet}
                       />
                     )}
-                    {tab === "games" && <GamesScreen onOpenGame={setActiveGame} />}
+                    {tab === "games" && <GamesScreen onPickGame={setModeSheet} onOpenParty={setPartyGame} />}
                     {tab === "chats" && (
                       <ChatsScreen
-                        conversations={conversations}
-                        friends={friends}
-                        onOpenChat={openChat}
+                        onOpenRooms={() => setOverlay({ kind: "rooms" })}
+                        onOpenStrangers={() => setOverlay({ kind: "strangers" })}
                       />
                     )}
-                    {tab === "friends" && (
-                      <FriendsScreen
-                        friends={friends}
-                        requests={requests}
-                        onAccept={acceptRequest}
-                        onDecline={declineRequest}
-                        onMessage={openChat}
-                      />
-                    )}
+                    {tab === "friends" && <FriendsScreen onSignUp={() => switchTab("me")} />}
+                    {tab === "me" && <ProfileScreen onOpenShop={() => setOverlay({ kind: "shop" })} />}
                   </div>
                 )}
 
-                <BottomNav tab={tab} onChange={switchTab} />
-              </>
-            )}
+                {!overlay && <BottomNav tab={tab} onChange={switchTab} badges={badges} />}
 
-            {activeGame && (
-              <GameOverlay
-                gameId={activeGame}
-                partnerName="Priya"
-                onClose={() => setActiveGame(null)}
-              />
+                {modeSheet && <GameModeSheet gameId={modeSheet} onClose={() => setModeSheet(null)} onFindStrangers={setMatching} />}
+                {matching && <Matchmaking gameId={matching} onClose={() => setMatching(null)} />}
+                {gameSession && <GameHost key={gameSession} sessionId={gameSession} onClose={() => setGameSession(null)} />}
+                {partyGame && (
+                  <GameOverlay
+                    gameId={partyGame}
+                    partnerName={me.partnerId ? nameOf(me.partnerId) : "your partner"}
+                    onClose={() => setPartyGame(null)}
+                  />
+                )}
+              </AppContext.Provider>
             )}
 
             {toast && (
