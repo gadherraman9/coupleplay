@@ -8,7 +8,7 @@ import GameOverlay from "./components/GameOverlay";
 import Matchmaking from "./components/Matchmaking";
 import StatusBar from "./components/StatusBar";
 import { useBotBrain } from "./backend/bots";
-import { api, friendIds, getDB, useDB, useSessionId } from "./backend/store";
+import { api, friendIds, getDB, onBackendError, useBackendReady, useDB, useSessionId } from "./backend/store";
 import { AppContext, attempt } from "./context";
 import type { AppCtx } from "./context";
 import type { GameId } from "./data";
@@ -30,6 +30,7 @@ type Overlay = { kind: "chat"; convId: string } | { kind: "rooms" } | { kind: "s
 export default function App() {
   const db = useDB();
   const sessionId = useSessionId();
+  const ready = useBackendReady();
   const me = sessionId ? db.users[sessionId] : undefined;
   const [tab, setTab] = useState<Tab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -41,6 +42,7 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useBotBrain(db, me?.id ?? null);
+
 
   useEffect(() => {
     if (!me) return;
@@ -66,6 +68,13 @@ export default function App() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
+
+  useEffect(() => {
+    const stop = onBackendError(notify);
+    return () => {
+      stop();
+    };
+  }, [notify]);
 
   const nameOf = useCallback(
     (id: string) => (id.startsWith("ai:") ? botName(id) : db.users[id]?.displayName ?? "Unknown"),
@@ -146,7 +155,12 @@ export default function App() {
           {me && !overlay && !gameSession && <div className="top-fade" aria-hidden="true" />}
 
           <div className="app">
-            {!me || !ctx ? (
+            {!ready ? (
+              <div className="suspended">
+                <span className="spinner" aria-hidden="true" />
+                <p>Connecting…</p>
+              </div>
+            ) : !me || !ctx ? (
               <LoginScreen />
             ) : me.suspended ? (
               <div className="suspended">

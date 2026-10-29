@@ -1793,3 +1793,13 @@
 .login-screen .login-switch {
   color: #fff;
 }
+
+.photo-loading {
+  display: grid;
+  place-items: center;
+  width: 180px;
+  height: 120px;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.7;
+}

@@ -108,3 +108,26 @@ export function formatSeconds(total: number) {
   const s = Math.floor(total % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+// Chat media is either an inline data URL (local mode) or "sb:<path>" in
+// private Supabase storage, which needs a short-lived signed link.
+export function useMediaSrc(src: string | undefined) {
+  const [url, setUrl] = useState<string | undefined>(src?.startsWith("sb:") ? undefined : src);
+  useEffect(() => {
+    if (!src?.startsWith("sb:")) {
+      setUrl(src);
+      return;
+    }
+    let alive = true;
+    void import("../backend/remote").then(({ signedUrl }) =>
+      signedUrl(src).then(
+        (next) => alive && setUrl(next),
+        () => alive && setUrl(undefined),
+      ),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [src]);
+  return url;
+}

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Gamepad2, ImagePlus, Mic, Pause, Play, Send, Sparkles, Trash2, X } from "lucide-react";
-import { api } from "../backend/store";
+import { api, uploadChatMedia } from "../backend/store";
 import type { ChatMessage } from "../backend/types";
 import { attempt, useApp } from "../context";
 import { gameById } from "../games/registry";
-import { compressImage, formatSeconds, MAX_VOICE_SECONDS, useVoiceRecorder } from "../lib/media";
+import { compressImage, formatSeconds, MAX_VOICE_SECONDS, useMediaSrc, useVoiceRecorder } from "../lib/media";
 import { chatThemeStyle } from "../themes";
 import { UserAvatar } from "./Avatar";
 
@@ -18,7 +18,17 @@ interface ConversationViewProps {
   quickReplies?: string[];
 }
 
+function ChatPhoto({ src, alt, onOpen }: { src: string; alt: string; onOpen: (url: string) => void }) {
+  const url = useMediaSrc(src);
+  return (
+    <button type="button" className="photo-btn" onClick={() => url && onOpen(url)}>
+      {url ? <img src={url} alt={alt} /> : <span className="photo-loading">Loading photo…</span>}
+    </button>
+  );
+}
+
 function VoiceNote({ src, duration }: { src: string; duration?: number }) {
+  const url = useMediaSrc(src);
   const audio = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -44,7 +54,7 @@ function VoiceNote({ src, duration }: { src: string; duration?: number }) {
       <small>{formatSeconds(duration ?? 0)}</small>
       <audio
         ref={audio}
-        src={src}
+        src={url}
         preload="metadata"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
@@ -99,7 +109,15 @@ export default function ConversationView({
   );
 
   const recorder = useVoiceRecorder(
-    useCallback((media: string, duration: number) => send({ kind: "voice", media, duration }), [send]),
+    useCallback(
+      (dataUrl: string, duration: number) => {
+        uploadChatMedia(convId, dataUrl).then(
+          (media) => send({ kind: "voice", media, duration }),
+          (error: Error) => notify(error.message),
+        );
+      },
+      [send, convId, notify],
+    ),
     notify,
   );
 
@@ -114,7 +132,7 @@ export default function ConversationView({
     if (!file) return;
     setSending(true);
     try {
-      const media = await compressImage(file);
+      const media = await uploadChatMedia(convId, await compressImage(file));
       send({ kind: "image", media, text: draft.trim() || undefined });
       setDraft("");
     } catch (error) {
@@ -170,9 +188,7 @@ export default function ConversationView({
           } else if (message.kind === "image" && message.media) {
             body = (
               <div className="bubble bubble--media">
-                <button type="button" className="photo-btn" onClick={() => setViewer(message.media!)}>
-                  <img src={message.media} alt={`Photo from ${nameOf(message.from)}`} />
-                </button>
+                <ChatPhoto src={message.media} alt={`Photo from ${nameOf(message.from)}`} onOpen={setViewer} />
                 {message.text && <span className="photo-caption">{message.text}</span>}
               </div>
             );

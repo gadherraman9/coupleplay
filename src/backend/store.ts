@@ -1,9 +1,10 @@
-// Local backend: the whole database lives in localStorage and every open tab
-// sees changes through the "storage" event, so two tabs behave like two
-// people. The current user is kept in sessionStorage, so each tab can be a
-// different account. Swap this file for a Supabase client to go online.
+// Backend store. The app reads one DB snapshot and changes it with mutate().
+// With Supabase keys in .env.local the snapshot is loaded from Supabase and
+// every change is written there (see remote.ts). Without keys it falls back
+// to localStorage, where two tabs behave like two people.
 import { useSyncExternalStore } from "react";
 import { BOT_USERS, ROOMS } from "./seed";
+import { deleteMedia, emailFor, loadAll, pushDiff, REMOTE, subscribeRealtime, supabase, uploadMedia } from "./remote";
 import type {
   ChatMessage,
   DB,
@@ -44,9 +45,21 @@ function freshDB(): DB {
 
 let cache: DB | null = null;
 const listeners = new Set<() => void>();
+const errorListeners = new Set<(message: string) => void>();
+
+export function onBackendError(listener: (message: string) => void) {
+  errorListeners.add(listener);
+  return () => errorListeners.delete(listener);
+}
+
+const reportError = (message: string) => errorListeners.forEach((listener) => listener(message));
 
 function read(): DB {
   if (cache) return cache;
+  if (REMOTE) {
+    cache = freshDB();
+    return cache;
+  }
   try {
     const raw = localStorage.getItem(DB_KEY);
     cache = raw ? (JSON.parse(raw) as DB) : freshDB();
@@ -60,7 +73,7 @@ function emit() {
   listeners.forEach((listener) => listener());
 }
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && !REMOTE) {
   window.addEventListener("storage", (event) => {
     if (event.key === DB_KEY) {
       cache = null;
@@ -70,9 +83,15 @@ if (typeof window !== "undefined") {
 }
 
 export function mutate<T>(fn: (db: DB) => T): T {
-  cache = null;
-  const db = structuredClone(read());
+  const before = read();
+  const db = structuredClone(before);
   const result = fn(db);
+  if (REMOTE) {
+    cache = db;
+    emit();
+    pushDiff(before, db, reportError);
+    return result;
+  }
   if (db.messages.length > MAX_MESSAGES) {
     db.messages = db.messages.slice(db.messages.length - MAX_MESSAGES);
   }
@@ -102,8 +121,12 @@ export function useDB() {
 // ---------- session ----------
 
 const sessionListeners = new Set<() => void>();
+let remoteSession: string | null = null;
+let ready = !REMOTE;
+let stopRealtime: (() => void) | null = null;
 
 export function getSessionId() {
+  if (REMOTE) return remoteSession;
   try {
     return sessionStorage.getItem(SESSION_KEY);
   } catch {
@@ -112,12 +135,21 @@ export function getSessionId() {
 }
 
 function setSessionId(id: string | null) {
-  try {
-    if (id) sessionStorage.setItem(SESSION_KEY, id);
-    else sessionStorage.removeItem(SESSION_KEY);
-  } catch {
-    /* private mode: session lasts only in memory */
+  if (REMOTE) {
+    remoteSession = id;
+  } else {
+    try {
+      if (id) sessionStorage.setItem(SESSION_KEY, id);
+      else sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* private mode: session lasts only in memory */
+    }
   }
+  sessionListeners.forEach((listener) => listener());
+}
+
+function setReady(value: boolean) {
+  ready = value;
   sessionListeners.forEach((listener) => listener());
 }
 
@@ -129,6 +161,79 @@ export function useSessionId() {
     },
     getSessionId,
   );
+}
+
+export function useBackendReady() {
+  return useSyncExternalStore(
+    (listener) => {
+      sessionListeners.add(listener);
+      return () => sessionListeners.delete(listener);
+    },
+    () => ready,
+  );
+}
+
+// Loads everything this account may see and starts live updates.
+async function startRemote() {
+  stopRealtime?.();
+  cache = await loadAll(freshDB());
+  emit();
+  stopRealtime = subscribeRealtime((spec, row, deleted) => {
+    if (!row?.id) return;
+    cache = deleted ? spec.remove(read(), row.id) : spec.apply(read(), row);
+    emit();
+  });
+}
+
+function stopRemote() {
+  stopRealtime?.();
+  stopRealtime = null;
+  cache = null;
+  emit();
+}
+
+if (REMOTE) {
+  void (async () => {
+    try {
+      const { data } = await supabase!.auth.getSession();
+      const id = data.session?.user.id;
+      if (id) {
+        await startRemote();
+        if (getDB().users[id]) setSessionId(id);
+        else await supabase!.auth.signOut();
+      }
+    } catch (error) {
+      reportError(error instanceof Error ? error.message : "Couldn't reach the server");
+    } finally {
+      setReady(true);
+    }
+  })();
+}
+
+// Turns a Supabase auth error into something a person understands.
+function authError(message: string) {
+  if (/anonymous/i.test(message)) return "Guest mode is switched off on the server (enable anonymous sign-ins)";
+  if (/invalid login/i.test(message)) return "Wrong username or password";
+  if (/already registered/i.test(message)) return "That username is taken";
+  return message;
+}
+
+async function remoteAuth(kind: "guest" | "signup" | "login", username?: string, password?: string) {
+  const auth = supabase!.auth;
+  const result =
+    kind === "guest"
+      ? await auth.signInAnonymously()
+      : kind === "signup"
+        ? await auth.signUp({ email: emailFor(username!), password: password! })
+        : await auth.signInWithPassword({ email: emailFor(username!), password: password! });
+  if (result.error) throw new Error(authError(result.error.message));
+  if (!result.data.session) throw new Error("Turn off \"Confirm email\" in Supabase Auth settings");
+  await startRemote();
+  return result.data.session.user.id;
+}
+
+export async function uploadChatMedia(convId: string, dataUrl: string) {
+  return REMOTE ? uploadMedia(convId, dataUrl) : dataUrl;
 }
 
 // ---------- helpers ----------
@@ -220,10 +325,11 @@ function welcome(db: DB, user: User) {
 
 export const api = {
   async continueAsGuest() {
+    const id = REMOTE ? await remoteAuth("guest") : uid();
     const user = mutate((db) => {
       let name = randomGuestName();
       while (findByUsername(db, name)) name = randomGuestName();
-      const guest = newUser({ username: name.toLowerCase(), displayName: name, isGuest: true });
+      const guest = newUser({ id, username: name.toLowerCase(), displayName: name, isGuest: true });
       db.users[guest.id] = guest;
       welcome(db, guest);
       return guest;
@@ -236,10 +342,12 @@ export const api = {
     const username = normalizeUsername(usernameRaw);
     if (!USERNAME_RE.test(username)) throw new Error("Username: 3-20 letters, numbers or _");
     if (password.length < 6) throw new Error("Password must be at least 6 characters");
-    const passwordHash = await hashPassword(username, password);
+    if (!REMOTE && findByUsername(getDB(), username)) throw new Error("That username is taken");
+    const id = REMOTE ? await remoteAuth("signup", username, password) : uid();
+    const passwordHash = REMOTE ? undefined : await hashPassword(username, password);
     const user = mutate((db) => {
       if (findByUsername(db, username)) throw new Error("That username is taken");
-      const created = newUser({ username, displayName: displayName?.trim() || usernameRaw.trim(), passwordHash });
+      const created = newUser({ id, username, displayName: displayName?.trim() || usernameRaw.trim(), passwordHash });
       db.users[created.id] = created;
       welcome(db, created);
       return created;
@@ -253,13 +361,19 @@ export const api = {
     const username = normalizeUsername(usernameRaw);
     if (!USERNAME_RE.test(username)) throw new Error("Username: 3-20 letters, numbers or _");
     if (password.length < 6) throw new Error("Password must be at least 6 characters");
-    const passwordHash = await hashPassword(username, password);
+    const taken = findByUsername(getDB(), username);
+    if (taken && taken.id !== userId) throw new Error("That username is taken");
+    let passwordHash: string | undefined;
+    if (REMOTE) {
+      const { error } = await supabase!.auth.updateUser({ email: emailFor(username), password });
+      if (error) throw new Error(authError(error.message));
+    } else {
+      passwordHash = await hashPassword(username, password);
+    }
     mutate((db) => {
-      const taken = findByUsername(db, username);
-      if (taken && taken.id !== userId) throw new Error("That username is taken");
       const user = db.users[userId];
       user.username = username;
-      user.passwordHash = passwordHash;
+      if (passwordHash) user.passwordHash = passwordHash;
       user.isGuest = false;
       user.hearts += 50;
     });
@@ -267,6 +381,13 @@ export const api = {
 
   async logIn(usernameRaw: string, password: string) {
     const username = normalizeUsername(usernameRaw);
+    if (REMOTE) {
+      const id = await remoteAuth("login", username, password);
+      const user = getDB().users[id];
+      if (!user) throw new Error("This account has no profile");
+      setSessionId(id);
+      return user;
+    }
     const user = findByUsername(getDB(), username);
     if (!user || user.isGuest || !user.passwordHash) throw new Error("No account with that username");
     if ((await hashPassword(username, password)) !== user.passwordHash) throw new Error("Wrong password");
@@ -276,6 +397,10 @@ export const api = {
 
   logOut() {
     setSessionId(null);
+    if (REMOTE) {
+      stopRemote();
+      void supabase!.auth.signOut();
+    }
   },
 
   heartbeat(me: string) {
@@ -297,7 +422,7 @@ export const api = {
         if (!USERNAME_RE.test(username)) throw new Error("Username: 3-20 letters, numbers or _");
         const taken = findByUsername(db, username);
         if (taken && taken.id !== me) throw new Error("That username is taken");
-        if (user.passwordHash && username !== user.username) {
+        if (!user.isGuest && username !== user.username) {
           throw new Error("Username is locked after sign up");
         }
         user.username = username;
@@ -426,9 +551,11 @@ export const api = {
   },
 
   deleteMessage(me: string, messageId: string) {
+    const media = getDB().messages.find((m) => m.id === messageId && m.from === me)?.media;
     mutate((db) => {
       db.messages = db.messages.filter((m) => !(m.id === messageId && m.from === me));
     });
+    if (REMOTE && media) void deleteMedia(media);
   },
 
   markRead(me: string, convId: string) {
@@ -543,7 +670,7 @@ export const api = {
         updatedAt: Date.now(),
       };
       db.games.push(session);
-      db.games = db.games.filter((g) => g.status !== "finished" || Date.now() - g.updatedAt < 86_400_000);
+      if (!REMOTE) db.games = db.games.filter((g) => g.status !== "finished" || Date.now() - g.updatedAt < 86_400_000);
       return session;
     });
   },
