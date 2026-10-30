@@ -6,6 +6,7 @@ import { botName, gameById } from "../games/registry";
 import { isBotPlayer } from "../games/types";
 import { isMuted, onMuteChange, play, setMuted } from "../games/sfx";
 import { Confetti } from "../games/ui";
+import { useFelt } from "../games/deck";
 import ConversationView from "./ConversationView";
 import { UserAvatar } from "./Avatar";
 import PlayerProfileSheet from "./PlayerProfileSheet";
@@ -23,6 +24,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const [, setNow] = useState(0);
   const seenMessages = useRef<number | null>(null);
   const [muted, setMutedState] = useState(isMuted());
+  const felt = useFelt();
   useEffect(() => onMuteChange(setMutedState), []);
 
   const names = useMemo(() => {
@@ -199,7 +201,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         </div>
       )}
 
-      <div className={`game-body game-body--board game-table--${def.id}`}>
+      <div className={`game-body game-body--board game-table--${def.id} ${def.felt ? "game-table--felt" : ""}`} style={def.felt ? felt : undefined}>
         <View state={session.state} me={me.id} players={session.players} names={names} act={act} finished={finished} />
 
         {finished && !def.soloOnly && (

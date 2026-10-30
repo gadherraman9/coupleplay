@@ -33,8 +33,8 @@ export default function GameModeSheet({ gameId, onClose, onFindStrangers }: Game
             <span className="mode-icon"><Bot size={20} /></span>
             <span className="mode-body">
               <strong>{def.soloOnly ? "Play solo" : "Solo vs bots"}</strong>
-              <small>{def.soloOnly ? "Beat your high score" : "Practice any time, no waiting"}</small>
-              {!def.soloOnly && def.maxPlayers > 2 && (
+              <small>{def.soloOnly ? "Beat your high score" : def.fillTo ? `You + ${def.fillTo - 1} bots` : "Practice any time, no waiting"}</small>
+              {!def.soloOnly && def.maxPlayers > 2 && !def.fillTo && (
                 <span className="bot-count">
                   {Array.from({ length: def.maxPlayers - 1 }, (_, i) => i + 1).map((n) => (
                     <button key={n} type="button" className={bots === n ? "is-active" : ""} onClick={() => setBots(n)}>

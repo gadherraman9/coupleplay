@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { AtSign, Ban, Check, Copy, Flag, Heart, MessageCircle, UserPlus, X } from "lucide-react";
 import { UserAvatar } from "../components/Avatar";
 import SafetySheet from "../components/SafetySheet";
-import { api, dmId, friendIds, isOnline } from "../backend/store";
+import { api, dmId, friendIds, isOnline, lastSeenText } from "../backend/store";
 import { attempt, useApp } from "../context";
 
 export default function FriendsScreen({ onSignUp }: { onSignUp: () => void }) {
@@ -170,7 +170,7 @@ export default function FriendsScreen({ onSignUp }: { onSignUp: () => void }) {
                 </strong>
                 <span className="friend-status">
                   {isOnline(db, id) ? <span className="online-dot" /> : null}
-                  {isOnline(db, id) ? "Online now" : `@${db.users[id]?.username}`}
+                  {isOnline(db, id) ? "Online now" : db.presence[id] ? lastSeenText(db, id) : `@${db.users[id]?.username}`}
                 </span>
               </div>
               <button type="button" className="icon-ghost" onClick={() => setSafety({ id, mode: "report" })} aria-label={`Report ${nameOf(id)}`}>

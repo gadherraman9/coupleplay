@@ -4,7 +4,7 @@ import { UserAvatar } from "../components/Avatar";
 import ConversationView from "../components/ConversationView";
 import SafetySheet from "../components/SafetySheet";
 import Sheet from "../components/Sheet";
-import { api, areFriends, hasBlocked, isOnline, otherInDm } from "../backend/store";
+import { api, areFriends, hasBlocked, isOnline, lastSeenText, otherInDm } from "../backend/store";
 import { useApp } from "../context";
 import { ONLINE_GAMES } from "../games/registry";
 
@@ -43,7 +43,7 @@ export default function ChatScreen({ convId, onBack }: { convId: string; onBack:
               {nameOf(other)} {user?.isBot && <span className="bot-tag">demo bot</span>}
             </strong>
             <span className={isOnline(db, other) ? "is-online" : ""}>
-              {isOnline(db, other) ? "Online now" : isPartner ? "Your partner" : `@${user?.username ?? "unknown"}`}
+              {isOnline(db, other) ? "Online now" : user?.isBot ? `@${user.username}` : lastSeenText(db, other)}
             </span>
           </div>
         </div>

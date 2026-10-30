@@ -20,6 +20,10 @@ export interface GameDef<S = any, A = any> {
   minPlayers: number;
   maxPlayers: number;
   soloOnly?: boolean;
+  // Seats always filled to this many players; empty ones get bots.
+  fillTo?: number;
+  // Card games: the table uses the viewer's card skin felt.
+  felt?: boolean;
   init: (players: string[]) => S;
   apply: (state: S, action: A, by: string) => S;
   winner: (state: S) => string | null;

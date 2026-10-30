@@ -13,6 +13,15 @@ export interface User {
   appTheme: string;
   chatTheme: string;
   partnerId?: string;
+  // Picked game skins by kind (ludo / snakes / cards).
+  skins?: Partial<Record<"ludo" | "snakes" | "cards", string>>;
+  // Progression: XP from playing, total wins and the current win streak.
+  xp?: number;
+  wins?: number;
+  winStreak?: number;
+  // Daily login reward: last day claimed and how many days in a row.
+  rewardDay?: string;
+  rewardStreak?: number;
   suspended?: boolean;
   createdAt: number;
 }

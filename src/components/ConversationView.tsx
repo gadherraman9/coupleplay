@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Gamepad2, ImagePlus, Mic, Pause, Play, Send, Sparkles, Trash2, X } from "lucide-react";
-import { api, uploadChatMedia } from "../backend/store";
+import { Check, CheckCheck, Clock3, Gamepad2, ImagePlus, Mic, Pause, Play, Send, Sparkles, Trash2, X } from "lucide-react";
+import { api, messageStatus, uploadChatMedia, usePendingVersion } from "../backend/store";
+import type { TickStatus } from "../backend/store";
 import type { ChatMessage } from "../backend/types";
 import { attempt, useApp } from "../context";
 import { gameById } from "../games/registry";
@@ -16,6 +17,15 @@ interface ConversationViewProps {
   blockedReason?: string;
   emptyTitle?: string;
   quickReplies?: string[];
+}
+
+function Ticks({ status }: { status: TickStatus }) {
+  const label = { pending: "Sending", sent: "Sent", delivered: "Delivered", read: "Seen" }[status];
+  return (
+    <span className={`ticks ticks--${status}`} title={label} aria-label={label}>
+      {status === "pending" ? <Clock3 size={11} /> : status === "sent" ? <Check size={13} strokeWidth={2.6} /> : <CheckCheck size={14} strokeWidth={2.6} />}
+    </span>
+  );
 }
 
 function ChatPhoto({ src, alt, onOpen }: { src: string; alt: string; onOpen: (url: string) => void }) {
@@ -95,10 +105,16 @@ export default function ConversationView({
     [db.messages, db.blocks, convId, me.id],
   );
 
+  usePendingVersion();
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    api.markRead(me.id, convId);
+    // Blue ticks only when the chat is really on screen.
+    const read = () => document.visibilityState === "visible" && api.markRead(me.id, convId);
+    read();
+    document.addEventListener("visibilitychange", read);
+    return () => document.removeEventListener("visibilitychange", read);
   }, [messages.length, convId, me.id]);
+  const isDm = convId.startsWith("dm:");
 
   const send = useCallback(
     (message: Omit<ChatMessage, "id" | "convId" | "from" | "createdAt">) =>
@@ -211,6 +227,7 @@ export default function ConversationView({
               {body}
               <span className="msg-time">
                 {time}
+                {mine && isDm && <Ticks status={messageStatus(db, message)} />}
                 {mine && (
                   <button
                     type="button"

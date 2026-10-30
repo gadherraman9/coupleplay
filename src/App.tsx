@@ -46,9 +46,18 @@ export default function App() {
   useEffect(() => {
     if (!me) return;
     api.heartbeat(me.id);
-    const timer = window.setInterval(() => api.heartbeat(me.id), 20_000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => api.heartbeat(me.id), 15_000);
+    const onVisible = () => document.visibilityState === "visible" && api.heartbeat(me.id);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [me?.id]);
+
+  useEffect(() => {
+    if (me) api.markDelivered(me.id);
+  }, [db.messages, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (sessionId && !me) api.logOut();
@@ -92,6 +101,10 @@ export default function App() {
         }
       }
       const players = [me.id, ...opponents];
+      // Fixed-size tables (Call Break) fill empty seats with bots.
+      for (let n = 1; def.fillTo && players.length < def.fillTo; n += 1) {
+        if (!players.includes(`ai:${n}`)) players.push(`ai:${n}`);
+      }
       attempt(notify, () => {
         const session = api.createGame(gameId, players, me.id, def.init(players), convId);
         if (convId?.startsWith("dm:")) {

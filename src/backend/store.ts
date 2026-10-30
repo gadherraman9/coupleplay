@@ -4,7 +4,7 @@
 // to localStorage, where two tabs behave like two people.
 import { useSyncExternalStore } from "react";
 import { BOT_USERS, ROOMS } from "./seed";
-import { deleteMedia, emailFor, loadAll, pushDiff, REMOTE, subscribeRealtime, supabase, uploadMedia } from "./remote";
+import { deleteMedia, emailFor, isPendingMessage, loadAll, pendingStore, pushDiff, REMOTE, subscribeRealtime, supabase, uploadMedia } from "./remote";
 import type {
   ChatMessage,
   DB,
@@ -270,6 +270,37 @@ export function isOnline(db: DB, id: string) {
   const user = db.users[id];
   if (user?.isBot) return true;
   return Date.now() - (db.presence[id] ?? 0) < 45_000;
+}
+
+// "last seen today at 9:40 PM" style text for someone who is offline.
+export function lastSeenText(db: DB, id: string) {
+  if (isOnline(db, id)) return "online";
+  const at = db.presence[id];
+  if (!at) return "offline";
+  const when = new Date(at);
+  const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 86_400_000);
+  if (days === 0) return `last seen today at ${time}`;
+  if (days === 1) return `last seen yesterday at ${time}`;
+  if (days < 7) return `last seen ${when.toLocaleDateString([], { weekday: "long" })} at ${time}`;
+  return `last seen ${when.toLocaleDateString([], { day: "numeric", month: "short" })}`;
+}
+
+export type TickStatus = "pending" | "sent" | "delivered" | "read";
+
+// WhatsApp-style ticks for my own message in a DM.
+export function messageStatus(db: DB, message: ChatMessage): TickStatus {
+  if (isPendingMessage(message.id)) return "pending";
+  if (!message.convId.startsWith("dm:")) return "sent";
+  const other = otherInDm(message.convId, message.from);
+  if (db.users[other]?.isBot) return Date.now() - message.createdAt > 1800 ? "read" : "delivered";
+  if ((db.reads[`${other}|${message.convId}`] ?? 0) >= message.createdAt) return "read";
+  if ((db.reads[`${other}|${message.convId}|d`] ?? 0) >= message.createdAt) return "delivered";
+  return "sent";
+}
+
+export function usePendingVersion() {
+  return useSyncExternalStore(pendingStore.subscribe, pendingStore.version);
 }
 
 export function initialsOf(name: string) {
@@ -574,6 +605,22 @@ export const api = {
     });
   },
 
+  // Everything that reached this device counts as delivered (double grey tick).
+  markDelivered(me: string) {
+    const db = getDB();
+    const latest = new Map<string, number>();
+    for (const m of db.messages) {
+      if (m.from !== me && m.convId.startsWith("dm:") && m.convId.includes(me)) {
+        latest.set(m.convId, Math.max(latest.get(m.convId) ?? 0, m.createdAt));
+      }
+    }
+    const due = [...latest].filter(([convId, at]) => (db.reads[`${me}|${convId}|d`] ?? 0) < at);
+    if (!due.length) return;
+    mutate((next) => {
+      for (const [convId, at] of due) next.reads[`${me}|${convId}|d`] = at;
+    });
+  },
+
   // ---------- hearts & themes ----------
 
   completeDailyTask(me: string) {
@@ -602,6 +649,14 @@ export const api = {
       if (user.hearts < price) throw new Error(`You need ${price - user.hearts} more hearts`);
       user.hearts -= price;
       user.ownedThemes.push(themeId);
+    });
+  },
+
+  applySkin(me: string, kind: "ludo" | "snakes" | "cards", skinId: string, free: boolean) {
+    mutate((db) => {
+      const user = db.users[me];
+      if (!free && !user.ownedThemes.includes(skinId)) throw new Error("Buy this skin first");
+      user.skins = { ...user.skins, [kind]: skinId };
     });
   },
 

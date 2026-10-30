@@ -1,4 +1,8 @@
 import { bounceGame } from "./bounce";
+import { callBreakGame } from "./callbreak";
+import { chessGame } from "./chess";
+import { pokerGame } from "./poker";
+import { rummyGame } from "./rummy";
 import { cardsGame } from "./cards";
 import { checkersGame } from "./checkers";
 import { dotsGame } from "./dots";
@@ -12,7 +16,11 @@ import type { GameDef } from "./types";
 
 export const ONLINE_GAMES: GameDef[] = [
   ludoGame,
+  pokerGame,
+  callBreakGame,
+  rummyGame,
   cardsGame,
+  chessGame,
   poolGame,
   fourInRowGame,
   snakesGame,

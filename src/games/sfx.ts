@@ -24,7 +24,17 @@ export type Sfx =
   | "win"
   | "lose"
   | "bounce"
-  | "error";
+  | "error"
+  | "chips"
+  | "deal"
+  | "fold"
+  | "check"
+  | "gunshot"
+  | "axe"
+  | "fall"
+  | "march"
+  | "levelup"
+  | "reward";
 
 const MUTE_KEY = "cp_sfx_muted";
 let ctx: AudioContext | null = null;
@@ -218,6 +228,49 @@ export function play(name: Sfx, volume = 1) {
       break;
     case "error":
       tone(ac, { freq: 200, dur: 0.12, type: "square", vol: v(0.08) });
+      break;
+    case "chips":
+      for (let i = 0; i < 4; i += 1) {
+        noise(ac, { dur: 0.04, vol: v(0.45), freq: 4200 + Math.random() * 1500, q: 6, at: i * 0.045 + Math.random() * 0.015 });
+        tone(ac, { freq: 2400 + Math.random() * 600, dur: 0.04, type: "sine", vol: v(0.08), at: i * 0.045 });
+      }
+      break;
+    case "deal":
+      noise(ac, { dur: 0.08, vol: v(0.3), freq: 5000, q: 0.7, type: "highpass" });
+      break;
+    case "fold":
+      noise(ac, { dur: 0.2, vol: v(0.2), freq: 1500, q: 0.5 });
+      tone(ac, { freq: 300, to: 180, dur: 0.15, type: "triangle", vol: v(0.1) });
+      break;
+    case "check":
+      tone(ac, { freq: 140, dur: 0.06, type: "sine", vol: v(0.35) });
+      tone(ac, { freq: 140, dur: 0.06, type: "sine", vol: v(0.35), at: 0.12 });
+      break;
+    case "gunshot":
+      noise(ac, { dur: 0.05, vol: v(0.9), freq: 2500, q: 0.4, type: "lowpass" });
+      noise(ac, { dur: 0.45, vol: v(0.5), freq: 700, q: 0.6, type: "lowpass", at: 0.02 });
+      tone(ac, { freq: 160, to: 40, dur: 0.3, type: "sine", vol: v(0.5) });
+      break;
+    case "axe":
+      noise(ac, { dur: 0.25, vol: v(0.25), freq: 2200, q: 1.5, at: 0 });
+      tone(ac, { freq: 900, to: 300, dur: 0.22, type: "sawtooth", vol: v(0.06) });
+      noise(ac, { dur: 0.12, vol: v(0.7), freq: 500, q: 1, at: 0.22 });
+      tone(ac, { freq: 110, to: 60, dur: 0.2, type: "sine", vol: v(0.4), at: 0.22 });
+      break;
+    case "fall":
+      tone(ac, { freq: 90, to: 45, dur: 0.25, type: "sine", vol: v(0.45) });
+      noise(ac, { dur: 0.2, vol: v(0.3), freq: 300, q: 0.8 });
+      break;
+    case "march":
+      for (let i = 0; i < 4; i += 1) noise(ac, { dur: 0.06, vol: v(0.25), freq: 350, q: 1.2, at: i * 0.22 });
+      break;
+    case "levelup":
+      notes(ac, [523, 659, 784, 1047, 1319], 0.08, { type: "square", vol: v(0.07) });
+      notes(ac, [1047, 1568], 0.2, { type: "triangle", vol: v(0.2), at: 0.45 });
+      break;
+    case "reward":
+      notes(ac, [880, 1109, 1319, 1760], 0.06, { type: "sine", vol: v(0.2) });
+      for (let i = 0; i < 6; i += 1) tone(ac, { freq: 2000 + i * 300, dur: 0.05, type: "sine", vol: v(0.05), at: 0.25 + i * 0.05 });
       break;
   }
 }

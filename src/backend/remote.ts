@@ -84,7 +84,8 @@ export const SPECS: Spec[] = [
   listSpec<DB["messages"][number]>("messages", "messages", (m) => m.id, (m) => ({ conv_id: m.convId, from_id: m.from })),
   listSpec<DB["queue"][number]>("queue", "queue", (q) => q.userId, () => ({})),
   recordSpec("presence", "presence", () => ({})),
-  recordSpec("reads", "reads", (key) => ({ user_id: key.split("|")[0] })),
+  // conv_id lets the other people in a chat read these rows (ticks).
+  recordSpec("reads", "reads", (key) => ({ user_id: key.split("|")[0], conv_id: key.split("|")[1] })),
 ];
 
 export async function loadAll(base: DB): Promise<DB> {
@@ -101,6 +102,45 @@ export async function loadAll(base: DB): Promise<DB> {
 }
 
 let queue: Promise<void> = Promise.resolve();
+
+// Messages written locally but not yet stored on the server (clock icon).
+const pending = new Set<string>();
+const pendingListeners = new Set<() => void>();
+let pendingVersion = 0;
+const pendingChanged = () => {
+  pendingVersion += 1;
+  pendingListeners.forEach((listener) => listener());
+};
+export const isPendingMessage = (id: string) => pending.has(id);
+export const pendingStore = {
+  subscribe: (listener: () => void) => {
+    pendingListeners.add(listener);
+    return () => pendingListeners.delete(listener);
+  },
+  version: () => pendingVersion,
+};
+
+// Before schema-v2.sql is run the reads table has no conv_id column.
+let readsHaveConv = true;
+async function write(kind: "insert" | "update", table: string, row: Row) {
+  const send = (r: Row) => {
+    if (kind === "insert") return supabase!.from(table).insert(r);
+    const { id, ...fields } = r;
+    return supabase!.from(table).update(fields).eq("id", id);
+  };
+  let current = row;
+  if (table === "reads" && !readsHaveConv) {
+    const { conv_id: _c, ...rest } = row;
+    current = rest as Row;
+  }
+  let { error } = await send(current);
+  if (error && table === "reads" && readsHaveConv && /conv_id/.test(error.message)) {
+    readsHaveConv = false;
+    const { conv_id: _c, ...rest } = row;
+    ({ error } = await send(rest as Row));
+  }
+  return error;
+}
 
 // Sends what changed between two snapshots, in order, one batch at a time.
 export function pushDiff(before: DB, after: DB, onError: (message: string) => void) {
@@ -120,15 +160,20 @@ export function pushDiff(before: DB, after: DB, onError: (message: string) => vo
     for (const key of old.keys()) if (!seen.has(key)) deletes.push([spec, key]);
   }
   if (!inserts.length && !updates.length && !deletes.length) return;
+  const newMessages = inserts.filter(([spec]) => spec.table === "messages").map(([, row]) => row.id);
+  if (newMessages.length) {
+    newMessages.forEach((id) => pending.add(id));
+    pendingChanged();
+  }
 
   queue = queue.then(async () => {
     for (const [spec, row] of inserts) {
-      const { error } = await supabase!.from(spec.table).insert(row);
+      const error = await write("insert", spec.table, row);
       if (error) onError(friendly(error.message));
+      if (spec.table === "messages" && pending.delete(row.id)) pendingChanged();
     }
     for (const [spec, row] of updates) {
-      const { id, ...fields } = row;
-      const { error } = await supabase!.from(spec.table).update(fields).eq("id", id);
+      const error = await write("update", spec.table, row);
       if (error) onError(friendly(error.message));
     }
     for (const [spec, id] of deletes) {
@@ -147,7 +192,7 @@ function friendly(message: string) {
 export function subscribeRealtime(onRow: (spec: Spec, row: any, deleted: boolean) => void) {
   const channel = supabase!.channel("coupleplay-db");
   for (const spec of SPECS) {
-    if (spec.table === "reads" || spec.table === "reports") continue;
+    if (spec.table === "reports") continue;
     channel.on("postgres_changes", { event: "*", schema: "public", table: spec.table }, (payload) => {
       if (payload.eventType === "DELETE") onRow(spec, payload.old, true);
       else onRow(spec, payload.new, false);
