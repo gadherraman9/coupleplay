@@ -156,8 +156,11 @@ export function arrange(cards: PCard[], wild: number): Arrangement {
   const fallback: Opt = withPure.sort((a, b) => a.dead - b.dead)[0];
   const best = full && (!fallback || full.dead <= fallback.dead + 0) ? full : fallback;
   if (!best) {
+    // No pure sequence: every card counts, but still show the groups found.
     const total = cards.reduce((s, c) => s + points(c, wild), 0);
-    return { melds: [], dead: cards.map((_, i) => i), points: Math.min(MAX_POINTS, total), valid: false };
+    const any = [...all.values()].sort((a, b) => a.dead - b.dead)[0];
+    const placed = new Set(any?.melds.flatMap((m) => m.cards) ?? []);
+    return { melds: any?.melds ?? [], dead: cards.map((_, i) => i).filter((i) => !placed.has(i)), points: Math.min(MAX_POINTS, total), valid: false };
   }
   const placed = new Set(best.melds.flatMap((m) => m.cards));
   const dead = cards.map((_, i) => i).filter((i) => !placed.has(i));
@@ -222,7 +225,7 @@ function bestDiscard(hand: PCard[], wild: number, avoid?: number) {
   const options = hand.filter((c) => c.id !== avoid && !isJoker(c, wild));
   for (const c of options.length ? options : hand) {
     const arr = arrange(hand.filter((x) => x.id !== c.id), wild);
-    const better = !best || (arr.valid !== best.arr.valid ? arr.valid : arr.points < best.arr.points || (arr.points === best.arr.points && points(c, wild) > points(best.card, wild)));
+    const better = !best || (arr.valid !== best.arr.valid ? arr.valid : arr.points !== best.arr.points ? arr.points < best.arr.points : arr.dead.length !== best.arr.dead.length ? arr.dead.length < best.arr.dead.length : points(c, wild) > points(best.card, wild));
     if (better) best = { card: c, arr };
   }
   return best!;
@@ -236,7 +239,9 @@ function botMove(state: State, seat: number): Action | null {
       if (isJoker(top, state.wild)) return { type: "draw", from: "discard" };
       const now = arrange(hand, state.wild).points;
       const withTop = bestDiscard([...hand, top], state.wild, top.id).arr.points;
-      if (withTop + 6 <= now) return { type: "draw", from: "discard" };
+      const before = arrange(hand, state.wild);
+      const after = bestDiscard([...hand, top], state.wild, top.id).arr;
+      if (withTop + 6 <= now || (withTop === now && after.dead.length + 1 < before.dead.length)) return { type: "draw", from: "discard" };
     }
     return { type: "draw", from: "deck" };
   }

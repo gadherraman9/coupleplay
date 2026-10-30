@@ -44,10 +44,12 @@ export default function App() {
   const dailyShown = useRef(false);
   useEffect(() => {
     if (!me || me.suspended || dailyShown.current || !canClaimDaily(me)) return;
-    dailyShown.current = true;
-    const timer = window.setTimeout(() => setDailyOpen(true), 900);
+    const timer = window.setTimeout(() => {
+      dailyShown.current = true;
+      setDailyOpen(true);
+    }, 900);
     return () => window.clearTimeout(timer);
-  }, [me]);
+  }, [me?.id, me?.rewardDay, me?.suspended]); // eslint-disable-line react-hooks/exhaustive-deps
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useBotBrain(db, me?.id ?? null);

@@ -1756,13 +1756,13 @@
   color: #fff;
 }
 
-.daily-reward-backdrop {
+.login-reward-backdrop {
   z-index: 300;
   display: grid;
   place-items: center;
 }
 
-.daily-reward {
+.login-reward {
   position: relative;
   width: min(92vw, 460px);
   padding: 24px 20px 18px;
@@ -1780,17 +1780,17 @@
   }
 }
 
-.daily-reward h2 {
+.login-reward h2 {
   margin: 8px 0 2px;
 }
 
-.daily-reward p {
+.login-reward p {
   margin: 0 0 14px;
   color: var(--ink-soft);
   font-size: 13px;
 }
 
-.daily-reward-icon {
+.login-reward-icon {
   display: inline-grid;
   place-items: center;
   width: 62px;
@@ -1941,4 +1941,31 @@
 .reward-nudge {
   background: #e0f2fe;
   color: #0369a1;
+}
+
+@media (min-width: 900px) {
+  .home-screen > .missions-card {
+    grid-column: 1 / -1;
+  }
+
+  .missions-list {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.chess-board {
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+}
+
+.chess-sq {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chess-piece {
+  position: absolute;
+  inset: 3% 0 4%;
+  height: auto;
+  max-height: 94%;
+  margin: auto;
 }

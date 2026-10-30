@@ -20,9 +20,9 @@ export default function DailyReward({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="sheet-backdrop daily-reward-backdrop" onClick={won !== null ? onClose : undefined}>
-      <div className="daily-reward" role="dialog" aria-modal="true" aria-label="Daily reward" onClick={(e) => e.stopPropagation()}>
-        <span className="daily-reward-icon">
+    <div className="sheet-backdrop login-reward-backdrop" onClick={won !== null ? onClose : undefined}>
+      <div className="login-reward" role="dialog" aria-modal="true" aria-label="Daily reward" onClick={(e) => e.stopPropagation()}>
+        <span className="login-reward-icon">
           <Gift size={30} />
         </span>
         <h2>Daily reward</h2>
