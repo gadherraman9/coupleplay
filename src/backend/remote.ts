@@ -7,7 +7,8 @@ import type { DB, User } from "./types";
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
-export const REMOTE = Boolean(URL && KEY);
+// VITE_LOCAL_ONLY=1 runs the app on the localStorage backend (for testing).
+export const REMOTE = Boolean(URL && KEY) && import.meta.env.VITE_LOCAL_ONLY !== "1";
 export const supabase = REMOTE ? createClient(URL!, KEY!) : null;
 
 type Row = Record<string, unknown> & { id: string };

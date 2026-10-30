@@ -22,6 +22,8 @@ export interface User {
   // Daily login reward: last day claimed and how many days in a row.
   rewardDay?: string;
   rewardStreak?: number;
+  // Today's mission progress (see progress.ts).
+  missions?: { day: string; played: number; won: number; cards: number; board: number; claimed: string[] };
   suspended?: boolean;
   createdAt: number;
 }

@@ -1,4 +1,5 @@
 import type { GameDef, GameViewProps } from "./types";
+import { skinArt, useSkin } from "../skins";
 import { rollDie } from "./types";
 import { play } from "./sfx";
 import { Dice, LogLine, PlayerChips, useStepper } from "./ui";
@@ -10,7 +11,8 @@ const JUMPS: Record<number, number> = {
   27: 5, 40: 3, 43: 18, 54: 31, 66: 45, 76: 58, 89: 53, 95: 77, 99: 41,
 };
 
-export const TOKEN_COLORS = ["#ec4899", "#3b82f6", "#22c55e", "#f59e0b"];
+export const TOKEN_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#eab308"];
+const pawnArt = ["pawn-red.webp", "pawn-blue.webp", "pawn-green.webp", "pawn-yellow.webp"].map((n) => skinArt(n));
 const CELL_COLORS = ["#fde68a", "#fbcfe8", "#bfdbfe", "#bbf7d0", "#ddd6fe", "#fed7aa"];
 const SNAKE_COLORS = [
   ["#16a34a", "#bef264"],
@@ -104,6 +106,8 @@ function Snake({ from, to, index }: { from: number; to: number; index: number })
 }
 
 function SnakesView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
+  const skin = useSkin("snakes");
+  const art = skinArt(skin.board);
   const current = state.players[state.turn];
   const lastMove = state.lastMove;
   const { shown, busy } = useStepper(state.positions, (player, at, target) => {
@@ -119,14 +123,14 @@ function SnakesView({ state, me, names, act, finished }: GameViewProps<State, Ac
 
   return (
     <div className="board-game">
-      <div className="snakes-board">
+      <div className={`snakes-board snakes-skin--${skin.id} ${art ? "has-art" : ""}`} style={art ? { backgroundImage: `url(${art})`, backgroundColor: skin.tint } : skin.tint ? { backgroundColor: skin.tint } : undefined}>
         <div className="snakes-grid">
           {Array.from({ length: 100 }, (_, i) => {
             const row = 9 - Math.floor(i / 10);
             const colIndex = i % 10;
             const n = row * 10 + (row % 2 === 0 ? colIndex : 9 - colIndex) + 1;
             return (
-              <span key={n} className={`snakes-cell ${n === 100 ? "is-goal" : ""}`} style={{ background: CELL_COLORS[(row + colIndex * 2) % CELL_COLORS.length] }}>
+              <span key={n} className={`snakes-cell ${n === 100 ? "is-goal" : ""}`} style={{ background: skin.cells ? skin.cells[(row + colIndex) % skin.cells.length] : CELL_COLORS[(row + colIndex * 2) % CELL_COLORS.length] }}>
                 {n === 100 ? "👑" : n}
               </span>
             );
@@ -166,8 +170,14 @@ function SnakesView({ state, me, names, act, finished }: GameViewProps<State, Ac
               >
                 <g key={pos} className="pawn-hop">
                   <ellipse cx="0" cy="2.3" rx="2.4" ry="0.9" fill="rgba(0,0,0,0.28)" />
+                  {pawnArt[index] ? (
+                    <image href={pawnArt[index]} x="-2.6" y="-5.6" width="5.2" height="8.2" preserveAspectRatio="xMidYMax meet" />
+                  ) : (
+                  <>
                   <path d="M-2.1 2 Q-2.2 -0.6 -0.9 -1.2 L0.9 -1.2 Q2.2 -0.6 2.1 2 Z" fill={`url(#pawn-${index})`} stroke="#fff" strokeWidth="0.45" />
                   <circle cx="0" cy="-2.1" r="1.55" fill={`url(#pawn-${index})`} stroke="#fff" strokeWidth="0.45" />
+                  </>
+                  )}
                 </g>
               </g>
             );

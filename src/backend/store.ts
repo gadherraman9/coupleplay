@@ -12,6 +12,7 @@ import type {
   Report,
   User,
 } from "./types";
+import { BOARD_GAMES, CARD_GAMES, DAILY_REWARDS, dayKey, LEVEL_REWARD, levelOf, MISSIONS, missionState, nextRewardIndex, streakBonus, WIN_HEARTS, XP_PLAY, XP_WIN } from "../progress";
 
 const DB_KEY = "cp_db_v1";
 const SESSION_KEY = "cp_session";
@@ -633,6 +634,66 @@ export const api = {
       user.lastDailyTask = today;
       user.hearts += 10;
       return true;
+    });
+  },
+
+  // Daily login calendar: returns the hearts won, or 0 if already claimed.
+  claimDaily(me: string) {
+    return mutate((db) => {
+      const user = db.users[me];
+      if (user.rewardDay === dayKey()) return { hearts: 0, day: 0 };
+      const index = nextRewardIndex(user);
+      const hearts = DAILY_REWARDS[index];
+      user.rewardStreak = index + 1;
+      user.rewardDay = dayKey();
+      user.hearts += hearts;
+      return { hearts, day: index + 1 };
+    });
+  },
+
+  // Called once per finished game for each human player: XP, wins, win
+  // streak, mission progress and hearts.
+  recordGame(me: string, game: string, won: boolean, solo: boolean) {
+    return mutate((db) => {
+      const user = db.users[me];
+      const before = levelOf(user.xp);
+      user.xp = (user.xp ?? 0) + XP_PLAY + (won ? XP_WIN : 0);
+      const m = missionState(user);
+      m.played += 1;
+      if (CARD_GAMES.has(game)) m.cards += 1;
+      if (BOARD_GAMES.has(game)) m.board += 1;
+      let hearts = 0;
+      let bonus = 0;
+      if (!solo) {
+        if (won) {
+          m.won += 1;
+          user.wins = (user.wins ?? 0) + 1;
+          user.winStreak = (user.winStreak ?? 0) + 1;
+          bonus = streakBonus(user.winStreak);
+          hearts += WIN_HEARTS + bonus;
+        } else {
+          user.winStreak = 0;
+        }
+      }
+      user.missions = m;
+      const after = levelOf(user.xp);
+      const levelReward = after > before ? LEVEL_REWARD(after) : 0;
+      hearts += levelReward;
+      user.hearts += hearts;
+      return { hearts, bonus, streak: user.winStreak ?? 0, levelUp: after > before ? after : 0, levelReward };
+    });
+  },
+
+  claimMission(me: string, id: string) {
+    return mutate((db) => {
+      const user = db.users[me];
+      const m = missionState(user);
+      const mission = MISSIONS.find((x) => x.id === id);
+      if (!mission || m.claimed.includes(id) || mission.count(m) < mission.goal) return 0;
+      m.claimed = [...m.claimed, id];
+      user.missions = m;
+      user.hearts += mission.reward;
+      return mission.reward;
     });
   },
 

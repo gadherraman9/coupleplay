@@ -1,4 +1,7 @@
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import type { GameDef, GameViewProps } from "./types";
+import { skinArt, useSkin } from "../skins";
 import { rollDie } from "./types";
 import { haptic, play } from "./sfx";
 import { Dice, LogLine, PlayerChips, useStepper } from "./ui";
@@ -38,6 +41,8 @@ interface State {
   dice: number | null;
   rollNo?: number;
   phase: "roll" | "move";
+  // The last capture: who hit, with which token (drives the battle scene).
+  capture?: { by: string; token: number; n: number };
   log: string;
   winner: string | null;
 }
@@ -77,14 +82,75 @@ function cellOf(seat: number, pos: number, token: number): [number, number] {
   return TRACK[absolute(seat, pos)];
 }
 
+const PAWN = ["pawn-red.webp", "pawn-green.webp", "pawn-yellow.webp", "pawn-blue.webp"];
+const SOLDIER = ["soldier-red.webp", "soldier-green.webp", "soldier-yellow.webp", "soldier-blue.webp"];
+const FIGHT_MS = { aim: 350, hit: 750, fall: 1500 };
+
+interface Fight {
+  victim: string;
+  attacker: string;
+  weapon: "gun" | "axe";
+  stage: "aim" | "hit" | "fall" | "fly";
+}
+
 function LudoView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
+  const skin = useSkin("ludo");
+  const battle = skin.pieces === "soldier";
+  const boardArt = skinArt(skin.board);
   const current = state.players[state.turn];
   const targets: Record<string, number> = {};
   state.players.forEach((player) => state.tokens[player].forEach((pos, t) => (targets[`${player}:${t}`] = pos)));
-  const { shown, busy } = useStepper(targets, (_key, at, target, all) => {
+  const [fight, setFight] = useState<Fight | null>(null);
+  const fightRef = useRef<Fight | null>(null);
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
+
+  // Battle skin: the attacker shoots (or swings an axe), the victim falls,
+  // then marches back to base. The stepper waits until the scene is done.
+  const startFight = (victim: string) => {
+    const capture = state.capture;
+    const attacker = capture ? `${capture.by}:${capture.token}` : "";
+    const next: Fight = { victim, attacker, weapon: (capture?.n ?? 0) % 2 === 1 ? "gun" : "axe", stage: "aim" };
+    fightRef.current = next;
+    setFight(next);
+    const stage = (name: Fight["stage"], at: number, sound?: () => void) =>
+      timers.current.push(
+        window.setTimeout(() => {
+          if (fightRef.current?.victim !== victim) return;
+          fightRef.current = { ...fightRef.current, stage: name };
+          setFight(fightRef.current);
+          sound?.();
+        }, at),
+      );
+    stage("hit", FIGHT_MS.aim, () => {
+      play(next.weapon === "gun" ? "gunshot" : "axe");
+      haptic(60);
+    });
+    stage("fall", FIGHT_MS.hit, () => play("fall"));
+    stage("fly", FIGHT_MS.fall, () => play("march"));
+    timers.current.push(
+      window.setTimeout(() => {
+        if (fightRef.current?.victim === victim) {
+          fightRef.current = null;
+          setFight(null);
+        }
+      }, FIGHT_MS.fall + 1100),
+    );
+  };
+
+  const { shown, busy } = useStepper(targets, (key, at, target, all) => {
     if (target === -1) {
       const othersMoving = Object.keys(all.targets).some((k) => all.targets[k] !== -1 && all.shown[k] !== all.targets[k]);
       if (othersMoving) return at;
+      if (battle) {
+        const f = fightRef.current;
+        if (!f || f.victim !== key) {
+          if (!f) startFight(key);
+          return at;
+        }
+        if (f.stage !== "fly") return at;
+        return -1;
+      }
       play("capture");
       haptic(40);
       return -1;
@@ -122,9 +188,12 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
     return { i, n: 0, key };
   });
 
+  const boardStyle: CSSProperties | undefined = boardArt ? { backgroundImage: `url(${boardArt})`, backgroundColor: skin.tint } : skin.tint ? { backgroundColor: skin.tint } : undefined;
+  const fightCell = fight ? placed.find((p) => `${p.player}:${p.t}` === fight.victim)?.cell : undefined;
+
   return (
     <div className="board-game">
-      <div className="ludo-board">
+      <div className={`ludo-board ludo-skin--${skin.id} ${boardArt ? "has-art" : ""}`} style={boardStyle}>
         {Array.from({ length: 225 }, (_, i) => {
           const r = Math.floor(i / 15);
           const c = i % 15;
@@ -145,7 +214,7 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
           <span
             key={color.name}
             className={`ludo-yard ${state.seats.includes(seat) ? "" : "is-empty"} ${state.seats[state.turn] === seat && !finished ? "is-turn" : ""}`}
-            style={{ top: `${(color.yard[0] / 15) * 100}%`, left: `${(color.yard[1] / 15) * 100}%`, background: color.hex }}
+            style={{ top: `${(color.yard[0] / 15) * 100}%`, left: `${(color.yard[1] / 15) * 100}%`, background: boardArt ? `${color.hex}8c` : color.hex }}
           >
             <span className="ludo-yard-inner">
               {[0, 1, 2, 3].map((spot) => (
@@ -167,26 +236,54 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
           const clickable = player === me && options.includes(t);
           const stack = stackIndex[idx];
           const count = stack.key ? stacks.get(stack.key)! : 1;
-          const shift = count > 1 ? (stack.i - (count - 1) / 2) * 1.6 : 0;
+          const key = `${player}:${t}`;
+          const role = fight?.victim === key ? "victim" : fight?.attacker === key ? "attacker" : null;
+          const shift = role === "victim" ? 1.5 : role === "attacker" ? -1.5 : count > 1 ? (stack.i - (count - 1) / 2) * 1.6 : 0;
+          const sprite = skinArt(battle ? SOLDIER[seat] : PAWN[seat]);
           return (
             <button
               key={`${player}-${t}`}
               type="button"
-              className={`ludo-token ${clickable ? "is-movable" : ""} ${count > 1 ? "is-stacked" : ""}`}
+              className={`ludo-token ${clickable ? "is-movable" : ""} ${count > 1 && !role ? "is-stacked" : ""} ${battle ? "is-soldier" : sprite ? "is-pawn-art" : ""} ${role ? `is-${role} stage-${fight!.stage} weapon-${fight!.weapon}` : ""}`}
               style={{
                 top: `${((r + 0.5) / 15) * 100}%`,
                 left: `${((c + 0.5) / 15) * 100 + shift}%`,
                 ["--pawn" as string]: COLORS[seat].hex,
-                zIndex: pos === -1 ? 2 : 4 + r,
+                zIndex: role ? 40 : pos === -1 ? 2 : 4 + r,
               }}
               disabled={!clickable}
               onClick={() => act({ type: "move", token: t })}
-              aria-label={`${COLORS[seat].name} token ${t + 1}`}
+              aria-label={`${COLORS[seat].name} ${battle ? "soldier" : "token"} ${t + 1}`}
             >
-              <span key={pos} className="ludo-token-hop" />
+              {battle || sprite ? (
+                <span key={pos} className="ludo-soldier">
+                  {sprite ? <img src={sprite} alt="" draggable={false} /> : <span className="ludo-token-hop" />}
+                </span>
+              ) : (
+                <span key={pos} className="ludo-token-hop" />
+              )}
             </button>
           );
         })}
+        {fight && fightCell && fight.stage !== "fly" && (
+          <span
+            className={`ludo-fx weapon-${fight.weapon} stage-${fight.stage}`}
+            style={{ top: `${((fightCell[0] + 0.5) / 15) * 100}%`, left: `${((fightCell[1] + 0.5) / 15) * 100}%` }}
+            aria-hidden="true"
+          >
+            {fight.weapon === "gun" ? (
+              <>
+                {skinArt("muzzle-flash.webp") ? <img className="fx-flash" src={skinArt("muzzle-flash.webp")} alt="" /> : <i className="fx-flash fx-flash--css" />}
+                <i className="fx-bullet" />
+              </>
+            ) : skinArt("axe.webp") ? (
+              <img className="fx-axe" src={skinArt("axe.webp")} alt="" />
+            ) : (
+              <i className="fx-axe fx-axe--css">🪓</i>
+            )}
+            <i className="fx-hit" />
+          </span>
+        )}
       </div>
 
       <PlayerChips
@@ -282,10 +379,12 @@ export const ludoGame: GameDef<State, Action> = {
     const bonus = dice === 6 || captured || to === FINISH;
     let log = from === -1 ? "brought a token out" : `moved ${dice}`;
     if (captured) log += " and captured a token! 💥";
+    const capture = captured ? { by, token: action.token, n: (state.capture?.n ?? 0) + 1 } : state.capture;
     if (to === FINISH) log += " — a token reached home 🏠";
     return {
       ...state,
       tokens,
+      capture,
       phase: "roll",
       dice,
       turn: won || bonus ? state.turn : nextTurn(state),

@@ -6,6 +6,8 @@ import GameHost from "./components/GameHost";
 import GameModeSheet from "./components/GameModeSheet";
 import GameOverlay from "./components/GameOverlay";
 import Matchmaking from "./components/Matchmaking";
+import DailyReward from "./components/DailyReward";
+import { canClaimDaily } from "./progress";
 import { useBotBrain } from "./backend/bots";
 import { api, friendIds, getDB, onBackendError, useBackendReady, useDB, useSessionId } from "./backend/store";
 import { AppContext, attempt } from "./context";
@@ -38,6 +40,14 @@ export default function App() {
   const [modeSheet, setModeSheet] = useState<string | null>(null);
   const [matching, setMatching] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [dailyOpen, setDailyOpen] = useState(false);
+  const dailyShown = useRef(false);
+  useEffect(() => {
+    if (!me || me.suspended || dailyShown.current || !canClaimDaily(me)) return;
+    dailyShown.current = true;
+    const timer = window.setTimeout(() => setDailyOpen(true), 900);
+    return () => window.clearTimeout(timer);
+  }, [me]);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useBotBrain(db, me?.id ?? null);
@@ -208,6 +218,7 @@ export default function App() {
 
               {modeSheet && <GameModeSheet gameId={modeSheet} onClose={() => setModeSheet(null)} onFindStrangers={setMatching} />}
               {matching && <Matchmaking gameId={matching} onClose={() => setMatching(null)} />}
+              {dailyOpen && <DailyReward onClose={() => setDailyOpen(false)} />}
               {gameSession && <GameHost key={gameSession} sessionId={gameSession} onClose={() => setGameSession(null)} />}
               {partyGame && (
                 <GameOverlay

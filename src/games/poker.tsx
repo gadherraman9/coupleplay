@@ -4,6 +4,9 @@ import { CardBack, makeDeck, PlayingCard, seatOrder } from "./deck";
 import type { PCard } from "./deck";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
+import { skinArt } from "../skins";
+
+const CHIP_ART = ["chip-red.webp", "chip-blue.webp", "chip-gold.webp"].map((n) => skinArt(n));
 
 // Texas Hold'em, no limit. Everyone starts with 1000 chips; blinds go up
 // every 5 hands. The game ends when one player has every chip, or after
@@ -381,7 +384,7 @@ function Chips({ amount, className = "" }: { amount: number; className?: string 
     <span key={amount} className={`poker-bet ${className}`}>
       <span className="chip-stack">
         {Array.from({ length: stack }, (_, i) => (
-          <i key={i} style={{ bottom: i * 3 }} />
+          CHIP_ART[i % 3] ? <img key={i} src={CHIP_ART[i % 3]} alt="" style={{ bottom: i * 3 }} /> : <i key={i} style={{ bottom: i * 3 }} />
         ))}
       </span>
       {amount}
@@ -458,6 +461,7 @@ function PokerView({ state, me, names, act, finished }: GameViewProps<State, Act
             )}
           </div>
           <span className="poker-pot">
+            {CHIP_ART[2] && <img src={CHIP_ART[2]} alt="" />}
             Pot <b>{total}</b>
           </span>
           <small className="poker-hand-no">

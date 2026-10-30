@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MessageCircle, RefreshCw, Trophy, Volume2, VolumeX, X } from "lucide-react";
+import { MessageCircle, Music, Music2, RefreshCw, Trophy, Volume2, VolumeX, X } from "lucide-react";
+import { isMusicOn, onMusicChange, setMusicOn, startMusic, stopMusic } from "../games/music";
 import { api, areFriends } from "../backend/store";
 import { attempt, useApp } from "../context";
 import { botName, gameById } from "../games/registry";
@@ -11,7 +12,6 @@ import ConversationView from "./ConversationView";
 import { UserAvatar } from "./Avatar";
 import PlayerProfileSheet from "./PlayerProfileSheet";
 
-const WIN_REWARD = 20;
 const BUBBLE_MS = 5000;
 const GAME_PHRASES = ["Good game! 🤝", "Nice move 👏", "Your turn ⏳", "Rematch? 🔁", "😂", "😡"];
 
@@ -26,6 +26,12 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const [muted, setMutedState] = useState(isMuted());
   const felt = useFelt();
   useEffect(() => onMuteChange(setMutedState), []);
+  const [music, setMusicState] = useState(isMusicOn());
+  useEffect(() => onMusicChange(setMusicState), []);
+  useEffect(() => {
+    startMusic();
+    return () => stopMusic();
+  }, []);
 
   const names = useMemo(() => {
     const map: Record<string, string> = {};
@@ -106,17 +112,27 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   }, [session?.status, session?.winner, me.id, def?.soloOnly]);
 
   const rewardKey = `cp_reward_${sessionId}_${me.id}`;
+  const [reward, setReward] = useState<ReturnType<typeof api.recordGame> | null>(null);
   useEffect(() => {
-    if (session?.winner !== me.id) return;
+    if (session?.status !== "finished" || !def) return;
     try {
       if (localStorage.getItem(rewardKey)) return;
       localStorage.setItem(rewardKey, "1");
     } catch {
       /* storage blocked: reward anyway */
     }
-    api.addHearts(me.id, WIN_REWARD);
-    notify(`You won! +${WIN_REWARD} hearts`);
-  }, [session?.winner, me.id, rewardKey, notify]);
+    const result = api.recordGame(me.id, def.id, session.winner === me.id, Boolean(def.soloOnly));
+    if (def.soloOnly) {
+      if (result.levelUp) notify(`Level ${result.levelUp}! +${result.levelReward} hearts`);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setReward(result);
+      if (result.levelUp) play("levelup");
+      else if (result.hearts) play("reward");
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [session?.status, session?.winner, me.id, rewardKey, notify, def]);
 
   const chatCount = db.messages.filter((m) => m.convId === session?.convId).length;
   useEffect(() => {
@@ -178,6 +194,9 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         <button type="button" className="round-btn" onClick={() => setMuted(!muted)} aria-label={muted ? "Turn sound on" : "Turn sound off"}>
           {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
         </button>
+        <button type="button" className={`round-btn ${music ? "" : "is-off"}`} onClick={() => setMusicOn(!music)} aria-label={music ? "Turn music off" : "Turn music on"}>
+          {music ? <Music size={17} /> : <Music2 size={17} opacity={0.4} />}
+        </button>
         {hasChat && (
           <button type="button" className="round-btn chat-toggle" onClick={() => setChatOpen((v) => !v)} aria-label="Chat while playing">
             <MessageCircle size={18} />
@@ -210,6 +229,15 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
               <Trophy size={28} />
             </span>
             <strong>{session.winner === me.id ? "You won! 🎉" : `${names[session.winner ?? ""] ?? "Someone"} won`}</strong>
+            {reward && (
+              <span className="reward-strip">
+                {reward.hearts > 0 && <span className="reward-hearts">+{reward.hearts} ❤</span>}
+                <span className="reward-xp">+{session.winner === me.id ? 40 : 10} XP</span>
+                {reward.streak > 1 && <span className="reward-streak">🔥 {reward.streak} wins in a row{reward.bonus ? ` (+${reward.bonus})` : ""}</span>}
+                {reward.levelUp > 0 && <span className="reward-level">⭐ Level {reward.levelUp}!</span>}
+                {session.winner !== me.id && <span className="reward-nudge">So close! Rematch and win it back 💪</span>}
+              </span>
+            )}
             <button type="button" className="primary-btn" onClick={() => playGame(def.id, opponents, session.convId.startsWith("dm:") ? session.convId : undefined)}>
               <RefreshCw size={16} /> Rematch
             </button>

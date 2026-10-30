@@ -3,12 +3,44 @@ import { ArrowLeft, Check, Heart } from "lucide-react";
 import { api } from "../backend/store";
 import { attempt, useApp } from "../context";
 import { APP_THEMES, CHAT_THEMES, chatThemeStyle } from "../themes";
+import { defaultSkin, SKINS, skinArt } from "../skins";
+import type { Skin, SkinKind } from "../skins";
+
+const SKIN_GROUPS: { kind: SkinKind; title: string }[] = [
+  { kind: "ludo", title: "Ludo boards" },
+  { kind: "snakes", title: "Snakes & Ladders boards" },
+  { kind: "cards", title: "Card backs & tables" },
+];
+
+function SkinPreview({ skin }: { skin: Skin }) {
+  const main = skinArt(skin.preview) ?? skinArt(skin.board) ?? skinArt(skin.felt);
+  const back = skinArt(skin.back);
+  return (
+    <span className={`skin-preview skin-preview--${skin.kind}`} style={{ background: skin.tint ?? "linear-gradient(135deg,#fde68a,#f9a8d4)", ...(main ? { backgroundImage: `url(${main})` } : null) }}>
+      {back && <img src={back} alt="" />}
+      {!main && !back && <b>{skin.kind === "ludo" ? "🎲" : skin.kind === "snakes" ? "🐍" : "🂠"}</b>}
+    </span>
+  );
+}
 
 export default function ShopScreen({ onBack }: { onBack: () => void }) {
   const { me, notify } = useApp();
-  const [tab, setTab] = useState<"app" | "chat">("app");
+  const [tab, setTab] = useState<"app" | "chat" | "skins">("skins");
   const items = tab === "app" ? APP_THEMES : CHAT_THEMES;
   const active = tab === "app" ? me.appTheme : me.chatTheme;
+
+  const chooseSkin = (skin: Skin) => {
+    const free = skin.price === 0;
+    const owned = free || me.ownedThemes.includes(skin.id);
+    attempt(notify, () => {
+      if (!owned) {
+        api.buyTheme(me.id, skin.id, skin.price);
+        notify(`Unlocked ${skin.name}! 🎉`);
+      }
+      api.applySkin(me.id, skin.kind, skin.id, free);
+      if (owned) notify(`${skin.name} skin applied`);
+    });
+  };
 
   const choose = (id: string, price: number, name: string) => {
     const owned = me.ownedThemes.includes(id);
@@ -17,7 +49,7 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
         api.buyTheme(me.id, id, price);
         notify(`Unlocked ${name}!`);
       }
-      api.applyTheme(me.id, tab, id);
+      api.applyTheme(me.id, tab === "chat" ? "chat" : "app", id);
       if (owned) notify(`${name} applied`);
     });
   };
@@ -30,8 +62,8 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
         </button>
         <div className="chat-person">
           <div>
-            <strong>Theme shop</strong>
-            <span>Spend hearts on new looks</span>
+            <strong>Shop</strong>
+            <span>Game skins and themes for your hearts</span>
           </div>
         </div>
         <span className="hearts-pill">
@@ -41,6 +73,9 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
 
       <div className="shop-body">
         <div className="segmented" role="tablist">
+          <button type="button" role="tab" aria-selected={tab === "skins"} className={tab === "skins" ? "is-active" : ""} onClick={() => setTab("skins")}>
+            Game skins
+          </button>
           <button type="button" role="tab" aria-selected={tab === "app"} className={tab === "app" ? "is-active" : ""} onClick={() => setTab("app")}>
             App themes
           </button>
@@ -49,6 +84,42 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
           </button>
         </div>
 
+        {tab === "skins" ? (
+          SKIN_GROUPS.map((group) => {
+            const current = me.skins?.[group.kind] ?? defaultSkin(group.kind).id;
+            return (
+              <section key={group.kind} className="skin-section">
+                <h3>{group.title}</h3>
+                <div className="shop-grid shop-grid--skins">
+                  {SKINS.filter((skin) => skin.kind === group.kind).map((skin) => {
+                    const owned = skin.price === 0 || me.ownedThemes.includes(skin.id);
+                    const isActive = current === skin.id;
+                    return (
+                      <button key={skin.id} type="button" className={`shop-item shop-item--skin ${isActive ? "is-active" : ""}`} onClick={() => chooseSkin(skin)}>
+                        <SkinPreview skin={skin} />
+                        <strong>{skin.name}</strong>
+                        <span className="skin-blurb">{skin.blurb}</span>
+                        <small>
+                          {isActive ? (
+                            <>
+                              <Check size={12} /> In use
+                            </>
+                          ) : owned ? (
+                            "Owned · tap to use"
+                          ) : (
+                            <>
+                              <Heart size={11} fill="currentColor" /> {skin.price}
+                            </>
+                          )}
+                        </small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })
+        ) : (
         <div className="shop-grid">
           {items.map((item) => {
             const owned = me.ownedThemes.includes(item.id);
@@ -89,6 +160,7 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
             );
           })}
         </div>
+        )}
         <p className="games-note">Earn hearts by winning games (+20), daily tasks (+10) and signing up (+50).</p>
       </div>
     </div>

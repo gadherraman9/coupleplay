@@ -4,6 +4,7 @@ import type { GameDef, GameViewProps } from "./types";
 import { shuffle } from "./types";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
+import { skinArt, useSkin } from "../skins";
 
 type Color = "red" | "yellow" | "green" | "blue";
 type Value = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "skip" | "reverse" | "draw2" | "wild" | "wild4";
@@ -99,6 +100,8 @@ const tilt = (id: number) => ((id * 37) % 21) - 10;
 
 function CardsView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
   const [choosing, setChoosing] = useState<number | null>(null);
+  const backArt = skinArt(useSkin("cards").back);
+  const backStyle = backArt ? { backgroundImage: `url(${backArt})`, backgroundSize: "cover" } : undefined;
   const current = state.players[state.turn];
   const myTurn = current === me && !finished;
   const hand = state.hands[me] ?? [];
@@ -114,7 +117,7 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
           <span key={player} className={`opponent ${player === current ? "is-turn" : ""}`}>
             <span className="opponent-fan">
               {Array.from({ length: Math.min(state.hands[player].length, 7) }, (_, i) => (
-                <span key={i} className="card-back" />
+                <span key={i} className="card-back" style={backStyle} />
               ))}
             </span>
             <strong>{names[player]}</strong>
@@ -124,7 +127,7 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
       </div>
 
       <div className="table-center">
-        <button type="button" className="card-back card-back--deck" disabled={!myTurn || state.drew} onClick={() => act({ type: "draw" })} aria-label="Draw a card">
+        <button type="button" className="card-back card-back--deck" style={backStyle} disabled={!myTurn || state.drew} onClick={() => act({ type: "draw" })} aria-label="Draw a card">
           <span>Draw</span>
         </button>
         <span className="discard-pile">
@@ -196,6 +199,7 @@ export const cardsGame: GameDef<State, Action> = {
   tagline: "Match colors and numbers, empty your hand first.",
   emoji: "🃏",
   className: "game-card--cards",
+  felt: true,
   minPlayers: 2,
   maxPlayers: 4,
   init: (players) => {

@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { GameDef, GameViewProps } from "./types";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
+import { skinArt } from "../skins";
+
+function PieceImg({ piece, className = "" }: { piece: Piece; className?: string }) {
+  const art = skinArt(`chess-${piece}.webp`);
+  if (!art) return <span className={`chess-glyph chess-glyph--${piece[0]} ${className}`}>{GLYPH[piece[1] as Kind]}</span>;
+  return <img className={`chess-piece ${className}`} src={art} alt="" draggable={false} />;
+}
 
 // Full chess rules: castling, en passant, promotion, check, mate, stalemate,
 // the 50-move rule and bare-king draws. A draw replays with colours swapped.
@@ -324,7 +331,7 @@ function ChessView({ state, me, names, act, finished }: GameViewProps<State, Act
   const Tray = ({ color }: { color: Color }) => (
     <span className="chess-tray">
       {lost(color).map((p, i) => (
-        <i key={i} className={`chess-glyph chess-glyph--${p[0]}`}>{GLYPH[p[1] as Kind]}</i>
+        <PieceImg key={i} piece={p} className="chess-piece--tray" />
       ))}
     </span>
   );
@@ -336,7 +343,7 @@ function ChessView({ state, me, names, act, finished }: GameViewProps<State, Act
         <b>{names[opponent]}</b> <small>{enemy(myColor) === "w" ? "White" : "Black"}</small>
         <Tray color={myColor} />
       </div>
-      <div className="chess-board">
+      <div className="chess-board" style={{ ["--wood-light" as string]: skinArt("wood-light.webp") ? `url(${skinArt("wood-light.webp")})` : "none", ["--wood-dark" as string]: skinArt("wood-dark.webp") ? `url(${skinArt("wood-dark.webp")})` : "none" }}>
         {Array.from({ length: 64 }, (_, k) => {
           const i = flip ? 63 - k : k;
           const p = state.board[i];
@@ -352,9 +359,7 @@ function ChessView({ state, me, names, act, finished }: GameViewProps<State, Act
               aria-label={`${sqName(i)}${p ? ` ${p[0] === "w" ? "white" : "black"} ${NAME[p[1] as Kind]}` : ""}`}
             >
               {p && (
-                <span key={`${p}-${state.last?.to === i ? state.game * 1000 + state.captured.length + (state.last?.from ?? 0) : "s"}`} className={`chess-glyph chess-glyph--${p[0]} ${state.last?.to === i ? "is-moved" : ""}`}>
-                  {GLYPH[p[1] as Kind]}
-                </span>
+                <PieceImg key={`${p}-${state.last?.to === i ? state.game * 1000 + state.captured.length + (state.last?.from ?? 0) : "s"}`} piece={p} className={state.last?.to === i ? "is-moved" : ""} />
               )}
               {(flip ? col(i) === 7 : col(i) === 0) && <small className="chess-rank">{8 - row(i)}</small>}
               {(flip ? row(i) === 0 : row(i) === 7) && <small className="chess-file">{"abcdefgh"[col(i)]}</small>}
@@ -372,7 +377,7 @@ function ChessView({ state, me, names, act, finished }: GameViewProps<State, Act
                   setPromo(null);
                 }}
               >
-                <span className={`chess-glyph chess-glyph--${myColor}`}>{GLYPH[k]}</span>
+                <PieceImg piece={`${myColor}${k}` as Piece} />
               </button>
             ))}
           </div>

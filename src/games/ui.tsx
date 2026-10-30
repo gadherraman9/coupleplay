@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { play } from "./sfx";
+import { skinArt } from "../skins";
 
 const DIE_DOTS: Record<number, number[]> = {
   1: [4],
@@ -46,6 +47,14 @@ export function Dice({ value, small, nonce }: { value: number | null; small?: bo
   }, [nonce ?? value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dots = face ? DIE_DOTS[face] : [];
+  const art = skinArt(`die-${face ?? 1}.webp`);
+  if (art) {
+    return (
+      <div className={`die die--art ${small ? "die--small" : ""} ${rolling ? "is-rolling" : face ? "is-landed" : ""} ${face ? "" : "is-blank"}`} aria-label={value ? `Die showing ${value}` : "Die not rolled yet"}>
+        <img src={art} alt="" draggable={false} />
+      </div>
+    );
+  }
   return (
     <div
       className={`die ${small ? "die--small" : ""} ${rolling ? "is-rolling" : face ? "is-landed" : ""}`}

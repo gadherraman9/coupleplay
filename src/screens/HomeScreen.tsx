@@ -1,6 +1,7 @@
 import { Check, ChevronRight, Flame, Heart, MessageCircle, Palette, Shuffle, Sparkles, UsersRound } from "lucide-react";
 import { UserAvatar } from "../components/Avatar";
 import Garden from "../components/Garden";
+import Missions from "../components/Missions";
 import { api, dmId, todayKey } from "../backend/store";
 import { useApp } from "../context";
 import { ONLINE_GAMES } from "../games/registry";
@@ -48,6 +49,8 @@ export default function HomeScreen({ onGoGames, onOpenStrangers, onOpenRooms, on
           <UserAvatar id={me.id} size={46} />
         </div>
       </header>
+
+      <Missions />
 
       <section className="card daily-card">
         <span className="daily-watermark" aria-hidden="true">
