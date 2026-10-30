@@ -268,7 +268,7 @@ export const cardsGame: GameDef<State, Action> = {
   },
   winner: (state) => state.winner,
   currentPlayer: (state) => state.players[state.turn],
-  botDelay: 1100,
+  botDelay: 750,
   botMove: (state, bot) => {
     const hand = state.hands[bot];
     const options = hand.filter((card) => playable(state, card));

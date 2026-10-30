@@ -233,7 +233,7 @@ export default function ConversationView({
           <p className="composer-blocked">{blockedReason}</p>
         ) : (
           <>
-            {quickReplies && !compact && (
+            {quickReplies && (
               <div className="quick-replies">
                 {quickReplies.map((reply) => (
                   <button key={reply} type="button" onClick={() => send({ kind: "text", text: reply })}>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flag, MessageCircle, RefreshCw, Trophy, Volume2, VolumeX, X } from "lucide-react";
+import { MessageCircle, RefreshCw, Trophy, Volume2, VolumeX, X } from "lucide-react";
 import { api, areFriends } from "../backend/store";
 import { attempt, useApp } from "../context";
 import { botName, gameById } from "../games/registry";
@@ -7,16 +7,20 @@ import { isBotPlayer } from "../games/types";
 import { isMuted, onMuteChange, play, setMuted } from "../games/sfx";
 import { Confetti } from "../games/ui";
 import ConversationView from "./ConversationView";
-import SafetySheet from "./SafetySheet";
+import { UserAvatar } from "./Avatar";
+import PlayerProfileSheet from "./PlayerProfileSheet";
 
 const WIN_REWARD = 20;
+const BUBBLE_MS = 5000;
+const GAME_PHRASES = ["Good game! 🤝", "Nice move 👏", "Your turn ⏳", "Rematch? 🔁", "😂", "😡"];
 
 export default function GameHost({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const { db, me, notify, nameOf, playGame } = useApp();
   const session = db.games.find((g) => g.id === sessionId);
   const def = session ? gameById(session.game) : undefined;
   const [chatOpen, setChatOpen] = useState(false);
-  const [reporting, setReporting] = useState<string | null>(null);
+  const [profile, setProfile] = useState<string | null>(null);
+  const [, setNow] = useState(0);
   const seenMessages = useRef<number | null>(null);
   const [muted, setMutedState] = useState(isMuted());
   useEffect(() => onMuteChange(setMutedState), []);
@@ -53,9 +57,10 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
 
   // The host's tab plays for the bots.
   const current = session && def?.currentPlayer ? def.currentPlayer(session.state) : null;
+  const currentIsBot = Boolean(current && (isBotPlayer(current) || db.users[current]?.isBot));
   useEffect(() => {
     if (!session || !def?.botMove || session.status !== "playing" || session.host !== me.id) return;
-    if (!current || !(isBotPlayer(current) || db.users[current]?.isBot)) return;
+    if (!current || !currentIsBot) return;
     const rev = session.rev;
     const timer = window.setTimeout(() => {
       try {
@@ -72,7 +77,10 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
       }
     }, def.botDelay ?? 900);
     return () => window.clearTimeout(timer);
-  }, [session, def, current, me.id, sessionId, db.users]);
+    // Keyed on the game revision, not the session object: unrelated updates
+    // (chat, presence) recreate the object and used to restart the bot timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.rev, session?.status, session?.host, def, current, me.id, sessionId, currentIsBot]);
 
   // Chime when it becomes my turn, fanfare when the game ends.
   const wasMyTurn = useRef(current === me.id);
@@ -115,6 +123,19 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   }, [chatOpen, chatCount]);
   const unread = !chatOpen && seenMessages.current !== null ? chatCount - seenMessages.current : 0;
 
+  // Plato-style speech bubbles: the newest line each player said, for a few seconds.
+  const bubbles = new Map<string, string>();
+  for (const m of db.messages) {
+    if (m.convId !== session?.convId || m.kind === "system" || Date.now() - m.createdAt > BUBBLE_MS) continue;
+    bubbles.set(m.from, m.kind === "image" ? "📷 Photo" : m.kind === "voice" ? "🎤 Voice note" : m.kind === "invite" ? "🎮 Invite" : m.text ?? "");
+  }
+  const bubbleKey = [...bubbles.values()].join("|");
+  useEffect(() => {
+    if (!bubbleKey) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), BUBBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [bubbleKey]);
+
   if (!session || !def) {
     return (
       <div className="game-overlay">
@@ -132,7 +153,6 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
 
   const humans = session.players.filter((p) => !isBotPlayer(p) && !db.users[p]?.isBot);
   const opponents = session.players.filter((p) => p !== me.id);
-  const strangers = opponents.filter((p) => !isBotPlayer(p) && !areFriends(db, me.id, p));
   const View = def.View;
   const finished = session.status === "finished";
   const hasChat = humans.length > 1 || session.convId.startsWith("dm:");
@@ -156,11 +176,6 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         <button type="button" className="round-btn" onClick={() => setMuted(!muted)} aria-label={muted ? "Turn sound on" : "Turn sound off"}>
           {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
         </button>
-        {strangers.length > 0 && (
-          <button type="button" className="round-btn" onClick={() => setReporting(strangers[0])} aria-label="Report player">
-            <Flag size={16} />
-          </button>
-        )}
         {hasChat && (
           <button type="button" className="round-btn chat-toggle" onClick={() => setChatOpen((v) => !v)} aria-label="Chat while playing">
             <MessageCircle size={18} />
@@ -168,6 +183,21 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
           </button>
         )}
       </header>
+
+      {!def.soloOnly && (
+        <div className="game-players" aria-label="Players">
+          {session.players.map((player) => (
+            <button key={player} type="button" className={`game-player ${player === current ? "is-turn" : ""}`} onClick={() => setProfile(player)}>
+              <UserAvatar id={player} size={38} />
+              <span className="game-player-name">
+                {names[player]}
+                {player !== me.id && !isBotPlayer(player) && !db.users[player]?.isBot && !areFriends(db, me.id, player) && <i className="game-player-tag">new</i>}
+              </span>
+              {bubbles.get(player) && <span key={bubbles.get(player)} className="speech-bubble">{bubbles.get(player)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className={`game-body game-body--board game-table--${def.id}`}>
         <View state={session.state} me={me.id} players={session.players} names={names} act={act} finished={finished} />
@@ -195,11 +225,13 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
               <X size={15} />
             </button>
           </div>
-          <ConversationView convId={session.convId} group={humans.length > 2} compact emptyTitle="Talk while you play" />
+          <ConversationView convId={session.convId} group={humans.length > 2} compact emptyTitle="Talk while you play" quickReplies={GAME_PHRASES} />
         </div>
       )}
 
-      {reporting && <SafetySheet targetId={reporting} mode="report" onClose={() => setReporting(null)} />}
+      {profile && (
+        <PlayerProfileSheet playerId={profile} onClose={() => setProfile(null)} onChat={hasChat && profile !== me.id ? () => setChatOpen(true) : undefined} />
+      )}
     </div>
   );
 }

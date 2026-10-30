@@ -81,9 +81,15 @@ export function simulate(start: Ball[], angle: number, power: number) {
   let firstHit: number | null = null;
   // Sounds to play during the replay, keyed by frame index.
   const events: { frame: number; kind: "clack" | "cushion" | "pocket"; vol: number }[] = [];
+  // A Set keeps this O(1); resting balls touch every substep and used to make
+  // the old linear scan the slowest part of a shot.
+  const noted = new Set<string>();
   const note = (kind: "clack" | "cushion" | "pocket", vol: number) => {
-    const frame = frames.length;
-    if (!events.some((e) => e.frame === frame && e.kind === kind)) events.push({ frame, kind, vol: Math.min(1, vol) });
+    if (vol < 0.05) return;
+    const key = `${frames.length}:${kind}`;
+    if (noted.has(key)) return;
+    noted.add(key);
+    events.push({ frame: frames.length, kind, vol: Math.min(1, vol) });
   };
 
   for (let frame = 0; frame < 2000; frame += 1) {
@@ -93,8 +99,15 @@ export function simulate(start: Ball[], angle: number, power: number) {
         if (b.potted) continue;
         b.x += b.vx / SUBSTEPS;
         b.y += b.vy / SUBSTEPS;
-        const pocket = POCKETS.find((p) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 < p.r * p.r);
-        if (pocket) {
+        let inPocket = false;
+        if (b.x < 7 || b.x > W - 7 || b.y < 7 || b.y > H - 7) {
+          for (const p of POCKETS) {
+            const px = b.x - p.x;
+            const py = b.y - p.y;
+            if (px * px + py * py < p.r * p.r) inPocket = true;
+          }
+        }
+        if (inPocket) {
           b.potted = true;
           b.vx = 0;
           b.vy = 0;
@@ -128,7 +141,7 @@ export function simulate(start: Ball[], angle: number, power: number) {
           const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
           if (rel <= 0) continue;
           const impulse = rel * 0.98;
-          note("clack", 0.25 + rel / 5);
+          if (rel > 0.02) note("clack", 0.25 + rel / 5);
           a.vx -= impulse * nx;
           a.vy -= impulse * ny;
           b.vx += impulse * nx;
@@ -154,11 +167,19 @@ export function simulate(start: Ball[], angle: number, power: number) {
   return { frames, end, potted, firstHit, events };
 }
 
-function drawTable(ctx: CanvasRenderingContext2D, scale: number, balls: Ball[], aim: { angle: number; power: number } | null) {
+// The table and each ball are painted once into offscreen canvases; every
+// animation frame then only copies pixels, which keeps phones smooth.
+const backgrounds = new Map<number, HTMLCanvasElement>();
+const sprites = new Map<string, HTMLCanvasElement>();
+
+function tableBackground(scale: number, cw: number, ch: number) {
+  const cached = backgrounds.get(scale);
+  if (cached) return cached;
+  const canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext("2d")!;
   const pad = 6 * scale;
-  const cw = ctx.canvas.width;
-  const ch = ctx.canvas.height;
-  ctx.clearRect(0, 0, cw, ch);
   // Wooden rails
   const wood = ctx.createLinearGradient(0, 0, 0, ch);
   wood.addColorStop(0, "#8b4513");
@@ -223,6 +244,65 @@ function drawTable(ctx: CanvasRenderingContext2D, scale: number, balls: Ball[], 
     ctx.arc(px, py, p.r * 0.95 * scale, 0, Math.PI * 2);
     ctx.fill();
   }
+  backgrounds.set(scale, canvas);
+  return canvas;
+}
+
+function ballSprite(id: number, scale: number) {
+  const key = `${id}@${scale}`;
+  const cached = sprites.get(key);
+  if (cached) return cached;
+  const r = R * scale;
+  const size = Math.ceil(r * 2 + r * 0.8 + 4);
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const x = r + 2;
+  const y = r + 2;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath();
+  ctx.ellipse(x + r * 0.25, y + r * 0.35, r, r * 0.9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const color = id <= 8 ? COLORS[id] : COLORS[id - 8];
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = id > 8 ? "#fbfaf5" : color;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  if (id > 8) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x - r, y - r * 0.55, r * 2, r * 1.1);
+  }
+  if (id > 0) {
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#111";
+    ctx.font = `bold ${r * 0.62}px Nunito, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(id), x, y + 0.3);
+  }
+  const shade = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.05);
+  shade.addColorStop(0, "rgba(255,255,255,0.55)");
+  shade.addColorStop(0.35, "rgba(255,255,255,0)");
+  shade.addColorStop(1, "rgba(0,0,0,0.4)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.restore();
+  sprites.set(key, canvas);
+  return canvas;
+}
+
+function drawTable(ctx: CanvasRenderingContext2D, scale: number, balls: Ball[], aim: { angle: number; power: number } | null) {
+  const pad = 6 * scale;
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.drawImage(tableBackground(scale, cw, ch), 0, 0);
   const cue = balls.find((b) => b.id === 0 && !b.potted);
   if (aim && cue) {
     // Guide line to the first ball or cushion in the aim direction
@@ -286,44 +366,10 @@ function drawTable(ctx: CanvasRenderingContext2D, scale: number, balls: Ball[], 
     ctx.stroke();
     ctx.lineCap = "butt";
   }
+  const offset = R * scale + 2;
   for (const b of balls) {
     if (b.potted) continue;
-    const x = pad + b.x * scale;
-    const y = pad + b.y * scale;
-    const r = R * scale;
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.beginPath();
-    ctx.ellipse(x + r * 0.25, y + r * 0.35, r, r * 0.9, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const color = b.id <= 8 ? COLORS[b.id] : COLORS[b.id - 8];
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.fillStyle = b.id > 8 ? "#fbfaf5" : color;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    if (b.id > 8) {
-      ctx.fillStyle = color;
-      ctx.fillRect(x - r, y - r * 0.55, r * 2, r * 1.1);
-    }
-    if (b.id > 0) {
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#111";
-      ctx.font = `bold ${r * 0.62}px Nunito, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(b.id), x, y + 0.3);
-    }
-    const shade = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.05);
-    shade.addColorStop(0, "rgba(255,255,255,0.55)");
-    shade.addColorStop(0.35, "rgba(255,255,255,0)");
-    shade.addColorStop(1, "rgba(0,0,0,0.4)");
-    ctx.fillStyle = shade;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    ctx.restore();
+    ctx.drawImage(ballSprite(b.id, scale), pad + b.x * scale - offset, pad + b.y * scale - offset);
   }
 }
 
@@ -342,33 +388,44 @@ function PoolView({ state, me, names, act, finished }: GameViewProps<State, Acti
     () => (state.lastShot ? simulate(state.lastShot.before, state.lastShot.angle, state.lastShot.power) : null),
     [state.lastShot],
   );
-  const frames = replay?.frames ?? null;
+
+  // Latest values for the animation loop, so other updates (chat, presence,
+  // our own write echoing back) never restart or cancel a shot in progress.
+  const live = useRef({ replay, balls: state.balls });
+  live.current = { replay, balls: state.balls };
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    if (frames && shownShot.current !== state.shotNo) {
-      shownShot.current = state.shotNo;
-      setAnimating(true);
-      let i = 0;
-      let raf = 0;
-      const events = replay?.events ?? [];
-      play("clack", 0.8);
-      const tick = () => {
-        drawTable(ctx, scale, frames[Math.min(i, frames.length - 1)], null);
-        for (const e of events) if (e.frame === i) play(e.kind, e.vol);
-        i += 1;
-        if (i < frames.length) raf = requestAnimationFrame(tick);
-        else {
-          drawTable(ctx, scale, state.balls, null);
-          setAnimating(false);
-        }
-      };
-      raf = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(raf);
-    }
-    if (!animating) drawTable(ctx, scale, state.balls, myTurn ? { angle: aimAngle, power } : null);
-  }, [state.shotNo, state.balls, frames, aimAngle, power, myTurn, animating]);
+    const frames = live.current.replay?.frames;
+    if (!ctx || !frames || shownShot.current === state.shotNo) return;
+    const previous = shownShot.current;
+    shownShot.current = state.shotNo;
+    setAnimating(true);
+    let i = 0;
+    let raf = 0;
+    const events = live.current.replay?.events ?? [];
+    play("clack", 0.8);
+    const tick = () => {
+      drawTable(ctx, scale, frames[Math.min(i, frames.length - 1)], null);
+      for (const e of events) if (e.frame === i) play(e.kind, e.vol);
+      i += 1;
+      if (i < frames.length) raf = requestAnimationFrame(tick);
+      else setAnimating(false);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      // Interrupted before the end (e.g. React re-running effects): replay next time.
+      if (i < frames.length) shownShot.current = previous;
+      setAnimating(false);
+    };
+  }, [state.shotNo]);
+
+  useEffect(() => {
+    if (animating) return;
+    const ctx = canvasRef.current?.getContext("2d");
+    if (ctx) drawTable(ctx, scale, state.balls, myTurn ? { angle: aimAngle, power } : null);
+  }, [state.balls, aimAngle, power, myTurn, animating]);
 
   const aimAt = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!myTurn) return;
@@ -426,7 +483,7 @@ export const poolGame: GameDef<State, Action> = {
   className: "game-card--pool",
   minPlayers: 2,
   maxPlayers: 2,
-  botDelay: 4200,
+  botDelay: 3500,
   init: (players) => ({
     players,
     balls: rack(),

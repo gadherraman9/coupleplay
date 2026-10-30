@@ -180,6 +180,12 @@ async function startRemote() {
   emit();
   stopRealtime = subscribeRealtime((spec, row, deleted) => {
     if (!row?.id) return;
+    // Our own writes echo back late; an older game state must not roll the
+    // board back over moves we already made.
+    if (!deleted && spec.table === "games") {
+      const local = read().games.find((g) => g.id === row.id);
+      if (local && local.rev >= (row.data?.rev ?? 0)) return;
+    }
     cache = deleted ? spec.remove(read(), row.id) : spec.apply(read(), row);
     emit();
   });
