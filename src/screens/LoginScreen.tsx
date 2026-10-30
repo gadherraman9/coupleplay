@@ -85,7 +85,7 @@ export default function LoginScreen() {
               <Lock size={13} /> Private chats
             </span>
             <span>
-              <Gamepad2 size={13} /> 6 games
+              <Gamepad2 size={13} /> 14 games
             </span>
           </div>
 
