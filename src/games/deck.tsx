@@ -1,7 +1,9 @@
 // A standard deck shared by Poker, Call Break and Rummy, plus the card
 // pictures. Card backs and table felt come from the viewer's card skin.
 import type { CSSProperties } from "react";
-import { skinArt, useSkin } from "../skins";
+import { skinArt, useSkin, useTable } from "../skins";
+import type { Skin } from "../skins";
+import { useSoundTheme } from "./music";
 import { shuffle } from "./types";
 
 export type Suit = "S" | "H" | "D" | "C";
@@ -89,25 +91,40 @@ export function PlayingCard({
   );
 }
 
+// Card back look: its picture, or the CSS pattern for colour backs.
+export function backStyle(skin: Skin): CSSProperties | undefined {
+  const art = skinArt(skin.back);
+  if (art) return { backgroundImage: `url(${art})`, backgroundSize: "cover" };
+  if (skin.backCss) return { background: skin.backCss };
+  return undefined;
+}
+
 export function CardBack({ small, tiny, style, className = "" }: { small?: boolean; tiny?: boolean; style?: CSSProperties; className?: string }) {
   const skin = useSkin("cards");
-  const art = skinArt(skin.back);
   return (
     <span
       className={`pcard pcard--back ${tiny ? "pcard--tiny" : small ? "pcard--small" : ""} ${className}`}
-      style={{ ...(art ? { backgroundImage: `url(${art})` } : null), ...style }}
+      style={{ ...backStyle(skin), ...style }}
       aria-hidden="true"
     />
   );
 }
 
-// Table background for the card games, from the viewer's skin.
-export function useFelt(): CSSProperties {
-  const skin = useSkin("cards");
+// Table background for the card games, from the viewer's table colour.
+export function feltStyle(skin: Skin): CSSProperties {
   const art = skinArt(skin.felt);
-  return art
-    ? { backgroundImage: `radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 30%, rgba(0,0,0,.45) 100%), url(${art})`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: skin.tint }
-    : { background: `radial-gradient(ellipse at 50% 40%, ${skin.tint ?? "#2f9e5b"} 0%, #0d2a1a 100%)` };
+  if (art) return { backgroundImage: `radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 30%, rgba(0,0,0,.45) 100%), url(${art})`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: skin.tint };
+  if (skin.bg) return { background: skin.bg };
+  return { background: `radial-gradient(ellipse at 50% 40%, ${skin.tint ?? "#2f9e5b"} 0%, #0d2a1a 100%)` };
+}
+
+export function useFelt(): CSSProperties {
+  return feltStyle(useTable());
+}
+
+// Card game views call this so the table's music and sounds play.
+export function useTableSound() {
+  useSoundTheme(useTable().sound);
 }
 
 // Where each opponent sits around a table, seen from my seat at the bottom.

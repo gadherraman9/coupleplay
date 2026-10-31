@@ -134,7 +134,7 @@ export default function App() {
         if (!players.includes(`ai:${n}`)) players.push(`ai:${n}`);
       }
       attempt(notify, () => {
-        const session = api.createGame(gameId, players, me.id, def.init(players), convId);
+        const session = api.createGame(gameId, players, me.id, def.init(players, me), convId);
         if (convId?.startsWith("dm:")) {
           api.sendMessage(me.id, convId, { kind: "invite", invite: { game: gameId, sessionId: session.id, title: def.title } });
         }

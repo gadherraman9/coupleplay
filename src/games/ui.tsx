@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { play } from "./sfx";
-import { skinArt } from "../skins";
+import { skinArt, useSkin } from "../skins";
+import type { DiceLook } from "../skins";
 
 const DIE_DOTS: Record<number, number[]> = {
   1: [4],
@@ -46,22 +47,45 @@ export function Dice({ value, small, nonce }: { value: number | null; small?: bo
     };
   }, [nonce ?? value]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  return <DieFace face={face} look={useSkin("dice").dice} small={small} rolling={rolling} label={value ? `Die showing ${value}` : "Die not rolled yet"} />;
+}
+
+const PIP_GLYPHS: Record<NonNullable<DiceLook["shape"]>, string> = {
+  dot: "",
+  heart: "♥",
+  star: "★",
+  skull: "☠",
+  paw: "🐾",
+  flame: "🔥",
+  diamond: "◆",
+  flower: "✿",
+  snow: "❄",
+  moon: "☾",
+};
+
+// One die face in a dice skin (no `look` = the Gemini 3D dice pictures).
+export function DieFace({ face, look, small, rolling, label }: { face: number | null; look?: DiceLook; small?: boolean; rolling?: boolean; label?: string }) {
   const dots = face ? DIE_DOTS[face] : [];
-  const art = skinArt(`die-${face ?? 1}.webp`);
+  const state = `${small ? "die--small" : ""} ${rolling ? "is-rolling" : face ? "is-landed" : ""}`;
+  const art = look ? undefined : skinArt(`die-${face ?? 1}.webp`);
   if (art) {
     return (
-      <div className={`die die--art ${small ? "die--small" : ""} ${rolling ? "is-rolling" : face ? "is-landed" : ""} ${face ? "" : "is-blank"}`} aria-label={value ? `Die showing ${value}` : "Die not rolled yet"}>
+      <div className={`die die--art ${state} ${face ? "" : "is-blank"}`} aria-label={label}>
         <img src={art} alt="" draggable={false} />
       </div>
     );
   }
+  const glyph = look?.shape && look.shape !== "dot" ? PIP_GLYPHS[look.shape] : null;
   return (
     <div
-      className={`die ${small ? "die--small" : ""} ${rolling ? "is-rolling" : face ? "is-landed" : ""}`}
-      aria-label={value ? `Die showing ${value}` : "Die not rolled yet"}
+      className={`die ${look ? "die--skin" : ""} ${glyph ? "die--glyph" : ""} ${state}`}
+      style={look ? { background: look.face, ["--pip" as string]: look.pip, ["--edge" as string]: look.edge ?? "rgba(255,255,255,.4)", ["--glow" as string]: look.glow ?? "transparent" } : undefined}
+      aria-label={label}
     >
       {Array.from({ length: 9 }, (_, index) => (
-        <span key={index} className={`die-dot ${dots.includes(index) ? "is-on" : ""}`} />
+        <span key={index} className={`die-dot ${dots.includes(index) ? "is-on" : ""}`}>
+          {glyph && dots.includes(index) ? glyph : null}
+        </span>
       ))}
     </div>
   );

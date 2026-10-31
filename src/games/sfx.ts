@@ -139,11 +139,115 @@ function noise(ac: AudioContext, { dur, vol = 0.3, at = 0, freq = 2000, q = 1, t
 const notes = (ac: AudioContext, freqs: number[], gap: number, opts: Partial<ToneOpts> = {}) =>
   freqs.forEach((freq, i) => tone(ac, { freq, dur: gap * 1.6, at: i * gap, ...opts }));
 
+// Board/table theme: some sounds change to match it (see themed below).
+let theme = "classic";
+export function setSfxTheme(next: string) {
+  theme = next;
+}
+
+// Theme versions of the board sounds. Returns false to use the normal sound.
+function themed(ac: AudioContext, name: Sfx, v: (x: number) => number) {
+  switch (`${theme}:${name}`) {
+    // Jungle: wooden knocks, marimba, snake hiss
+    case "jungle:step":
+      tone(ac, { freq: 380 + Math.random() * 80, dur: 0.09, type: "sine", vol: v(0.3) });
+      noise(ac, { dur: 0.03, vol: v(0.15), freq: 900, q: 3 });
+      return true;
+    case "jungle:climb":
+      notes(ac, [440, 523, 659, 784, 880], 0.07, { type: "sine", vol: v(0.25), dur: 0.15 });
+      return true;
+    case "jungle:slide":
+    case "desert:slide":
+    case "spooky:slide":
+      noise(ac, { dur: 0.9, vol: v(0.22), freq: 6000, q: 0.8, type: "highpass" });
+      tone(ac, { freq: 500, to: 120, dur: 0.8, type: "triangle", vol: v(0.1) });
+      return true;
+    // Space: blips and lasers
+    case "space:step":
+      tone(ac, { freq: 1200 + Math.random() * 200, to: 1800, dur: 0.06, type: "square", vol: v(0.06) });
+      return true;
+    case "space:climb":
+      tone(ac, { freq: 300, to: 2400, dur: 0.35, type: "sawtooth", vol: v(0.08) });
+      return true;
+    case "space:slide":
+      tone(ac, { freq: 2400, to: 120, dur: 0.6, type: "square", vol: v(0.06) });
+      return true;
+    case "space:capture":
+      tone(ac, { freq: 1800, to: 80, dur: 0.4, type: "sawtooth", vol: v(0.12) });
+      noise(ac, { dur: 0.3, vol: v(0.3), freq: 400, q: 0.6, type: "lowpass", at: 0.05 });
+      return true;
+    // Candy: bubble pops and chimes
+    case "candy:step":
+      tone(ac, { freq: 500, to: 1300, dur: 0.08, type: "sine", vol: v(0.22) });
+      return true;
+    case "candy:climb":
+    case "snow:climb":
+      notes(ac, [1047, 1319, 1568, 2093], 0.06, { type: "sine", vol: v(0.18) });
+      return true;
+    case "candy:slide":
+      tone(ac, { freq: 1400, to: 300, dur: 0.5, type: "sine", vol: v(0.2) });
+      return true;
+    // Ocean: water drops and bubbles
+    case "ocean:step":
+      tone(ac, { freq: 700 + Math.random() * 200, to: 1600, dur: 0.07, type: "sine", vol: v(0.22) });
+      return true;
+    case "ocean:climb":
+      for (let i = 0; i < 6; i += 1) tone(ac, { freq: 600 + i * 180, to: 1400 + i * 200, dur: 0.06, type: "sine", vol: v(0.15), at: i * 0.05 });
+      return true;
+    case "ocean:slide":
+      noise(ac, { dur: 0.8, vol: v(0.25), freq: 700, q: 0.5, type: "lowpass" });
+      return true;
+    // Spooky: low knocks and a ghostly wobble
+    case "spooky:step":
+      tone(ac, { freq: 120, dur: 0.12, type: "sine", vol: v(0.35) });
+      noise(ac, { dur: 0.05, vol: v(0.15), freq: 400, q: 1 });
+      return true;
+    case "spooky:capture":
+      tone(ac, { freq: 300, to: 150, dur: 0.6, type: "triangle", vol: v(0.15) });
+      tone(ac, { freq: 310, to: 140, dur: 0.6, type: "triangle", vol: v(0.15), at: 0.05 });
+      return true;
+    case "spooky:climb":
+      notes(ac, [220, 262, 311, 370], 0.1, { type: "triangle", vol: v(0.2) });
+      return true;
+    // Royal: harpsichord plucks and fanfare
+    case "royal:step":
+      tone(ac, { freq: 880 + Math.random() * 40, dur: 0.12, type: "sawtooth", vol: v(0.05) });
+      return true;
+    case "royal:home":
+    case "royal:climb":
+      notes(ac, [523, 659, 784, 1047], 0.09, { type: "square", vol: v(0.07) });
+      return true;
+    // Battle: boot thuds
+    case "battle:step":
+      noise(ac, { dur: 0.07, vol: v(0.35), freq: 300, q: 1.2 });
+      tone(ac, { freq: 90, dur: 0.07, type: "sine", vol: v(0.25) });
+      return true;
+    // Desert: sand shuffle and oud notes
+    case "desert:step":
+      noise(ac, { dur: 0.1, vol: v(0.2), freq: 2500, q: 0.7 });
+      return true;
+    case "desert:climb":
+      notes(ac, [330, 349, 415, 440, 494], 0.07, { type: "sawtooth", vol: v(0.06) });
+      return true;
+    // Snow: crunchy steps, icy slide
+    case "snow:step":
+      noise(ac, { dur: 0.09, vol: v(0.3), freq: 1200, q: 0.4, type: "lowpass" });
+      noise(ac, { dur: 0.05, vol: v(0.15), freq: 5000, q: 1, at: 0.02 });
+      return true;
+    case "snow:slide":
+      tone(ac, { freq: 3000, to: 600, dur: 0.6, type: "sine", vol: v(0.08) });
+      noise(ac, { dur: 0.6, vol: v(0.12), freq: 7000, q: 0.5, type: "highpass" });
+      return true;
+  }
+  return false;
+}
+
 export function play(name: Sfx, volume = 1) {
   if (muted) return;
   const ac = audio();
   if (!ac || !master || ac.state !== "running") return;
   const v = (x: number) => x * volume;
+  if (theme !== "classic" && themed(ac, name, v)) return;
   switch (name) {
     case "tap":
       tone(ac, { freq: 660, to: 880, dur: 0.06, type: "triangle", vol: v(0.15) });

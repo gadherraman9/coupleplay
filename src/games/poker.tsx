@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GameDef, GameViewProps } from "./types";
-import { CardBack, makeDeck, PlayingCard, seatOrder } from "./deck";
+import { CardBack, makeDeck, PlayingCard, seatOrder, useTableSound } from "./deck";
 import type { PCard } from "./deck";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
@@ -394,6 +394,7 @@ function Chips({ amount, className = "" }: { amount: number; className?: string 
 }
 
 function PokerView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
+  useTableSound();
   const mySeat = state.players.indexOf(me);
   const seat = state.seats[mySeat];
   const myTurn = !finished && state.turn === mySeat && state.street !== "showdown";

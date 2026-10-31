@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { GameDef, GameViewProps } from "./types";
-import { CardBack, cardLabel, makeDeck, PlayingCard, seatOrder, sortHand } from "./deck";
+import { CardBack, cardLabel, makeDeck, PlayingCard, seatOrder, sortHand, useTableSound } from "./deck";
 import type { PCard, Suit } from "./deck";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
@@ -142,6 +142,7 @@ function botPlay(state: State, seat: number) {
 const SPOT = ["bottom", "left", "top", "right"] as const;
 
 function CallBreakView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
+  useTableSound();
   const mySeat = state.players.indexOf(me);
   const myTurn = !finished && state.turn === mySeat;
   const hand = state.hands[mySeat] ?? [];

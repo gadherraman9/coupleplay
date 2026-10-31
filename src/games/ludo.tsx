@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { GameDef, GameViewProps } from "./types";
-import { skinArt, useSkin } from "../skins";
+import { skinArt, tokenLook, useSkin } from "../skins";
+import type { TokenColor } from "../skins";
+import { useSoundTheme } from "./music";
 import { rollDie } from "./types";
 import { haptic, play } from "./sfx";
 import { Dice, LogLine, PlayerChips, useStepper } from "./ui";
@@ -83,7 +85,7 @@ function cellOf(seat: number, pos: number, token: number): [number, number] {
   return TRACK[absolute(seat, pos)];
 }
 
-const PAWN = ["pawn-red.webp", "pawn-green.webp", "pawn-yellow.webp", "pawn-blue.webp"];
+const TOKEN_COLOR: TokenColor[] = ["red", "green", "yellow", "blue"];
 const SOLDIER = ["soldier-red.webp", "soldier-green.webp", "soldier-yellow.webp", "soldier-blue.webp"];
 // The scene runs as long as the Flow clip (about 4 s).
 const CLIP_FIGHT_MS = { aim: 500, hit: 1500, fall: 2500, fly: 3500 };
@@ -99,6 +101,8 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
   const skin = useSkin("ludo");
   const battle = skin.pieces === "soldier";
   const boardArt = skinArt(skin.board);
+  const tokenSkin = useSkin("token");
+  useSoundTheme(skin.sound);
   const current = state.players[state.turn];
   const targets: Record<string, number> = {};
   state.players.forEach((player) => state.tokens[player].forEach((pos, t) => (targets[`${player}:${t}`] = pos)));
@@ -201,12 +205,12 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
     return { i, n: 0, key };
   });
 
-  const boardStyle: CSSProperties | undefined = boardArt ? { backgroundImage: `url(${boardArt})`, backgroundColor: skin.tint } : skin.tint ? { backgroundColor: skin.tint } : undefined;
+  const boardStyle: CSSProperties | undefined = boardArt ? { backgroundImage: `url(${boardArt})`, backgroundColor: skin.tint } : skin.bg ? { background: skin.bg } : skin.tint ? { backgroundColor: skin.tint } : undefined;
   const fightCell = fight ? placed.find((p) => `${p.player}:${p.t}` === fight.victim)?.cell : undefined;
 
   return (
     <div className="board-game">
-      <div className={`ludo-board ludo-skin--${skin.id} ${boardArt ? "has-art" : ""}`} style={boardStyle}>
+      <div className={`ludo-board ludo-skin--${skin.id} ${boardArt ? "has-art" : skin.bg ? "has-bg" : ""}`} style={boardStyle}>
         {Array.from({ length: 225 }, (_, i) => {
           const r = Math.floor(i / 15);
           const c = i % 15;
@@ -252,7 +256,8 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
           const key = `${player}:${t}`;
           const role = fight?.victim === key ? "victim" : fight?.attacker === key ? "attacker" : null;
           const shift = role === "victim" ? 1.5 : role === "attacker" ? -1.5 : count > 1 ? (stack.i - (count - 1) / 2) * 1.6 : 0;
-          const sprite = skinArt(battle ? SOLDIER[seat] : PAWN[seat]);
+          const look = battle ? { art: skinArt(SOLDIER[seat]), emoji: undefined } : tokenLook(tokenSkin, TOKEN_COLOR[seat]);
+          const sprite = look.art;
           return (
             <button
               key={`${player}-${t}`}
@@ -271,6 +276,10 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
               {battle || sprite ? (
                 <span key={pos} className="ludo-soldier">
                   {sprite ? <img src={sprite} alt="" draggable={false} /> : <span className="ludo-token-hop" />}
+                </span>
+              ) : look.emoji ? (
+                <span key={pos} className="ludo-token-hop has-emoji">
+                  <b>{look.emoji}</b>
                 </span>
               ) : (
                 <span key={pos} className="ludo-token-hop" />

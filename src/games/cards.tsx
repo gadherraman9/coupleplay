@@ -6,7 +6,8 @@ import { useCardFlights } from "./cardFly";
 import { CardBack } from "./deck";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
-import { skinArt, useSkin } from "../skins";
+import { useSkin } from "../skins";
+import { backStyle, useTableSound } from "./deck";
 
 type Color = "red" | "yellow" | "green" | "blue";
 type Value = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "skip" | "reverse" | "draw2" | "wild" | "wild4";
@@ -102,8 +103,8 @@ const tilt = (id: number) => ((id * 37) % 21) - 10;
 
 function CardsView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
   const [choosing, setChoosing] = useState<number | null>(null);
-  const backArt = skinArt(useSkin("cards").back);
-  const backStyle = backArt ? { backgroundImage: `url(${backArt})`, backgroundSize: "cover" } : undefined;
+  const backLook = backStyle(useSkin("cards"));
+  useTableSound();
   const current = state.players[state.turn];
   const myTurn = current === me && !finished;
   const hand = state.hands[me] ?? [];
@@ -123,7 +124,7 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
           <span key={player} className={`opponent ${player === current ? "is-turn" : ""}`} data-fly-seat={player}>
             <span className="opponent-fan">
               {Array.from({ length: Math.min(state.hands[player].length, 7) }, (_, i) => (
-                <span key={i} className="card-back" style={backStyle} />
+                <span key={i} className="card-back" style={backLook} />
               ))}
             </span>
             <strong>{names[player]}</strong>
@@ -133,7 +134,7 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
       </div>
 
       <div className="table-center">
-        <button type="button" className="card-back card-back--deck" style={backStyle} disabled={!myTurn || state.drew} onClick={() => act({ type: "draw" })} aria-label="Draw a card">
+        <button type="button" className="card-back card-back--deck" style={backLook} disabled={!myTurn || state.drew} onClick={() => act({ type: "draw" })} aria-label="Draw a card">
           <span>Draw</span>
         </button>
         <span className="discard-pile" data-fly-pile-spot>

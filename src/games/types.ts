@@ -24,7 +24,8 @@ export interface GameDef<S = any, A = any> {
   fillTo?: number;
   // Card games: the table uses the viewer's card skin felt.
   felt?: boolean;
-  init: (players: string[]) => S;
+  // `host` is the player starting the game (some games use their skins).
+  init: (players: string[], host?: { skins?: Partial<Record<string, string>> }) => S;
   apply: (state: S, action: A, by: string) => S;
   winner: (state: S) => string | null;
   currentPlayer?: (state: S) => string | null;

@@ -3,22 +3,52 @@ import { ArrowLeft, Check, Heart } from "lucide-react";
 import { api } from "../backend/store";
 import { attempt, useApp } from "../context";
 import { APP_THEMES, CHAT_THEMES, chatThemeStyle } from "../themes";
-import { defaultSkin, SKINS, skinArt } from "../skins";
-import type { Skin, SkinKind } from "../skins";
+import { defaultSkin, SKINS, skinArt, tableFor, tokenLook } from "../skins";
+import type { Skin, SkinKind, TokenColor } from "../skins";
+import { DieFace } from "../games/ui";
+import { backStyle, feltStyle } from "../games/deck";
 
-const SKIN_GROUPS: { kind: SkinKind; title: string }[] = [
-  { kind: "ludo", title: "Ludo boards" },
-  { kind: "snakes", title: "Snakes & Ladders boards" },
-  { kind: "cards", title: "Card backs & tables" },
+const SKIN_GROUPS: { kind: SkinKind; title: string; short: string }[] = [
+  { kind: "dice", title: "Dice", short: "🎲 Dice" },
+  { kind: "token", title: "Goti (Ludo & Snakes pieces)", short: "♟️ Goti" },
+  { kind: "ludo", title: "Ludo boards (with music)", short: "🏠 Ludo" },
+  { kind: "snakes", title: "Snakes & Ladders boards (with music)", short: "🐍 Snakes" },
+  { kind: "cards", title: "Card backs", short: "🂠 Cards" },
+  { kind: "table", title: "Table colours", short: "🟩 Tables" },
 ];
 
+const COLORS: [TokenColor, string][] = [["red", "#ef4444"], ["green", "#22c55e"], ["yellow", "#eab308"], ["blue", "#3b82f6"]];
+
 function SkinPreview({ skin }: { skin: Skin }) {
-  const main = skinArt(skin.preview) ?? skinArt(skin.board) ?? skinArt(skin.felt);
-  const back = skinArt(skin.back);
+  if (skin.kind === "dice") {
+    return (
+      <span className="skin-preview skin-preview--dice">
+        <DieFace face={5} look={skin.dice} />
+      </span>
+    );
+  }
+  if (skin.kind === "token") {
+    return (
+      <span className="skin-preview skin-preview--token">
+        {COLORS.map(([color, hex]) => {
+          const look = tokenLook(skin, color);
+          return look.art ? <img key={color} src={look.art} alt="" /> : <i key={color} style={{ background: hex }}>{look.emoji}</i>;
+        })}
+      </span>
+    );
+  }
+  if (skin.kind === "cards") {
+    return (
+      <span className="skin-preview skin-preview--cards" style={{ background: "linear-gradient(135deg,#f5f3ff,#fce7f3)" }}>
+        <span className="skin-preview-card" style={backStyle(skin)} />
+      </span>
+    );
+  }
+  if (skin.kind === "table") return <span className="skin-preview skin-preview--table" style={feltStyle(skin)} />;
+  const main = skinArt(skin.preview) ?? skinArt(skin.board);
   return (
-    <span className={`skin-preview skin-preview--${skin.kind}`} style={{ background: skin.tint ?? "linear-gradient(135deg,#fde68a,#f9a8d4)", ...(main ? { backgroundImage: `url(${main})` } : null) }}>
-      {back && <img src={back} alt="" />}
-      {!main && !back && <b>{skin.kind === "ludo" ? "🎲" : skin.kind === "snakes" ? "🐍" : "🂠"}</b>}
+    <span className={`skin-preview skin-preview--${skin.kind}`} style={main ? { backgroundColor: skin.tint, backgroundImage: `url(${main})` } : { background: skin.bg ?? skin.tint ?? "linear-gradient(135deg,#fde68a,#f9a8d4)" }}>
+      {!main && <b>{skin.kind === "ludo" ? "🎲" : "🐍"}</b>}
     </span>
   );
 }
@@ -26,6 +56,7 @@ function SkinPreview({ skin }: { skin: Skin }) {
 export default function ShopScreen({ onBack }: { onBack: () => void }) {
   const { me, notify } = useApp();
   const [tab, setTab] = useState<"app" | "chat" | "skins">("skins");
+  const [kind, setKind] = useState<SkinKind>("dice");
   const items = tab === "app" ? APP_THEMES : CHAT_THEMES;
   const active = tab === "app" ? me.appTheme : me.chatTheme;
 
@@ -84,9 +115,18 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
           </button>
         </div>
 
+        {tab === "skins" && (
+          <div className="skin-kinds" role="tablist">
+            {SKIN_GROUPS.map((group) => (
+              <button key={group.kind} type="button" role="tab" aria-selected={kind === group.kind} className={kind === group.kind ? "is-active" : ""} onClick={() => setKind(group.kind)}>
+                {group.short}
+              </button>
+            ))}
+          </div>
+        )}
         {tab === "skins" ? (
-          SKIN_GROUPS.map((group) => {
-            const current = me.skins?.[group.kind] ?? defaultSkin(group.kind).id;
+          SKIN_GROUPS.filter((group) => group.kind === kind).map((group) => {
+            const current = group.kind === "table" ? tableFor(me.skins).id : me.skins?.[group.kind] ?? defaultSkin(group.kind).id;
             return (
               <section key={group.kind} className="skin-section">
                 <h3>{group.title}</h3>

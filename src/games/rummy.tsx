@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GameDef, GameViewProps } from "./types";
-import { CardBack, cardLabel, makeDeck, PlayingCard, rankLabel, seatOrder } from "./deck";
+import { CardBack, cardLabel, makeDeck, PlayingCard, rankLabel, seatOrder, useTableSound } from "./deck";
 import type { PCard } from "./deck";
 import { shuffle } from "./types";
 import { useCardFlights } from "./cardFly";
@@ -257,6 +257,7 @@ function botMove(state: State, seat: number): Action | null {
 const MELD_LABEL: Record<MeldKind, string> = { pure: "Pure sequence", seq: "Sequence", set: "Set" };
 
 function RummyView({ state, me, names, act, finished }: GameViewProps<State, Action>) {
+  useTableSound();
   const mySeat = state.players.indexOf(me);
   const hand = state.hands[mySeat] ?? [];
   const myTurn = !finished && state.turn === mySeat;

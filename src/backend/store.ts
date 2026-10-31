@@ -715,7 +715,7 @@ export const api = {
     });
   },
 
-  applySkin(me: string, kind: "ludo" | "snakes" | "cards", skinId: string, free: boolean) {
+  applySkin(me: string, kind: "ludo" | "snakes" | "dice" | "token" | "cards" | "table", skinId: string, free: boolean) {
     mutate((db) => {
       const user = db.users[me];
       if (!free && !user.ownedThemes.includes(skinId)) throw new Error("Buy this skin first");
