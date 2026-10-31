@@ -78,10 +78,10 @@ export const SKINS: Skin[] = [
   { id: "ludo-battle", kind: "ludo", name: "Battle", price: 200, blurb: "Four armies. Captures are shoot-outs!", pieces: "soldier", board: "ludo-battle.webp", preview: "ludo-battle-preview.webp", tint: "#4d5b2c", sound: "battle" },
   { id: "ludo-royal", kind: "ludo", name: "Royal Palace", price: 120, blurb: "Marble, gold and palace music", board: "ludo-royal.webp", tint: "#d8c9a3", sound: "royal" },
   { id: "ludo-space", kind: "ludo", name: "Galaxy", price: 120, blurb: "Race across the stars to synth beats", board: "ludo-space.webp", tint: "#1b1640", sound: "space" },
-  { id: "ludo-jungle", kind: "ludo", name: "Jungle", price: 120, blurb: "Tribal drums and wild leaves", board: "ludo-jungle.webp", tint: "#1f5a2a", bg: "radial-gradient(circle at 20% 20%, #4ade80 0 8%, transparent 9%), radial-gradient(circle at 80% 70%, #22c55e 0 10%, transparent 11%), linear-gradient(135deg, #14532d, #3f6212)", sound: "jungle" },
-  { id: "ludo-ocean", kind: "ludo", name: "Ocean", price: 120, blurb: "Waves, bubbles and sea music", board: "ludo-ocean.webp", tint: "#0e4a6e", bg: "radial-gradient(circle at 30% 20%, rgba(255,255,255,.25) 0 3%, transparent 4%), radial-gradient(circle at 70% 60%, rgba(255,255,255,.2) 0 2%, transparent 3%), linear-gradient(180deg, #38bdf8, #0c4a6e)", sound: "ocean" },
-  { id: "ludo-spooky", kind: "ludo", name: "Haunted", price: 150, blurb: "Zombie night with spooky organ", board: "ludo-spooky.webp", tint: "#1c1030", bg: "radial-gradient(circle at 75% 18%, #fef3c7 0 7%, transparent 8%), linear-gradient(180deg, #312e81, #0f0a1e)", sound: "spooky" },
-  { id: "ludo-candy", kind: "ludo", name: "Candy", price: 100, blurb: "Sweet board with music-box tunes", board: "ludo-candy.webp", tint: "#f9a8d4", bg: "repeating-linear-gradient(45deg, #fbcfe8 0 14px, #fdf2f8 14px 28px)", sound: "candy" },
+  { id: "ludo-jungle", kind: "ludo", name: "Jungle", price: 120, blurb: "Tribal drums and wild leaves", board: "snakes-jungle.webp", tint: "#1f5a2a", bg: "radial-gradient(circle at 20% 20%, #4ade80 0 8%, transparent 9%), radial-gradient(circle at 80% 70%, #22c55e 0 10%, transparent 11%), linear-gradient(135deg, #14532d, #3f6212)", sound: "jungle" },
+  { id: "ludo-ocean", kind: "ludo", name: "Ocean", price: 120, blurb: "Waves, bubbles and sea music", board: "snakes-ocean.webp", tint: "#0e4a6e", bg: "radial-gradient(circle at 30% 20%, rgba(255,255,255,.25) 0 3%, transparent 4%), radial-gradient(circle at 70% 60%, rgba(255,255,255,.2) 0 2%, transparent 3%), linear-gradient(180deg, #38bdf8, #0c4a6e)", sound: "ocean" },
+  { id: "ludo-spooky", kind: "ludo", name: "Haunted", price: 150, blurb: "Zombie night with spooky organ", board: "snakes-spooky.webp", tint: "#1c1030", bg: "radial-gradient(circle at 75% 18%, #fef3c7 0 7%, transparent 8%), linear-gradient(180deg, #312e81, #0f0a1e)", sound: "spooky" },
+  { id: "ludo-candy", kind: "ludo", name: "Candy", price: 100, blurb: "Sweet board with music-box tunes", board: "snakes-candy.webp", tint: "#f9a8d4", bg: "repeating-linear-gradient(45deg, #fbcfe8 0 14px, #fdf2f8 14px 28px)", sound: "candy" },
 
   // ---------- Snakes & Ladders boards (each has its own layout) ----------
   { id: "snakes-classic", kind: "snakes", name: "Classic", price: 0, blurb: "Bright and simple", layout: "classic", sound: "classic",
@@ -129,13 +129,13 @@ export const SKINS: Skin[] = [
   { id: "token-boys", kind: "token", name: "Boys", price: 120, blurb: "Hero, ninja, king, pilot", pack: "boys", emoji: tok("🦸‍♂️", "🥷", "🤴", "🧑‍✈️") },
   { id: "token-pets", kind: "token", name: "Cute Pets", price: 100, blurb: "Puppy, bunny, kitty, hamster", pack: "pets", emoji: tok("🐶", "🐰", "🐱", "🐹") },
   { id: "token-dinos", kind: "token", name: "Dinosaurs", price: 120, blurb: "Roaring T-rex gang", pack: "dinos", emoji: tok("🦖", "🦕", "🐲", "🐊") },
-  { id: "token-monsters", kind: "token", name: "Spooky", price: 120, blurb: "Ogre, pumpkin, ghost, skull", pack: "monsters", emoji: tok("👹", "🎃", "👻", "💀") },
-  { id: "token-robots", kind: "token", name: "Robots", price: 120, blurb: "Beep boop battle bots", pack: "robots", emoji: tok("🤖", "🤖", "🤖", "🤖") },
-  { id: "token-space", kind: "token", name: "Space", price: 100, blurb: "Rocket, alien, planet, UFO", pack: "space", emoji: tok("🚀", "👽", "🪐", "🛸") },
+  { id: "token-monsters", kind: "token", name: "Halloween", price: 120, blurb: "Little devil, pumpkin, ghost, vampire", pack: "monsters", emoji: tok("😈", "🎃", "👻", "🧛") },
+  { id: "token-robots", kind: "token", name: "Robots", price: 120, blurb: "Four beep-boop bots", pack: "robots", emoji: tok("🤖", "🤖", "🤖", "🤖") },
+  { id: "token-space", kind: "token", name: "Space", price: 100, blurb: "Rocket, alien, astronaut, UFO", pack: "space", emoji: tok("🚀", "👽", "🧑‍🚀", "🛸") },
   { id: "token-cars", kind: "token", name: "Racing Cars", price: 100, blurb: "Vroom to home", pack: "cars", emoji: tok("🏎️", "🚜", "🚕", "🚓") },
   { id: "token-food", kind: "token", name: "Yummy Food", price: 80, blurb: "Strawberry, avocado, lemon, berry", pack: "food", emoji: tok("🍓", "🥑", "🍋", "🫐") },
   { id: "token-love", kind: "token", name: "Love Hearts", price: 80, blurb: "For couples", pack: "love", emoji: tok("❤️", "💚", "💛", "💙") },
-  { id: "token-pirates", kind: "token", name: "Pirates", price: 120, blurb: "Ahoy! Pirate crew", pack: "pirates", emoji: tok("🏴‍☠️", "🦜", "🪙", "⚓") },
+  { id: "token-pirates", kind: "token", name: "Pirates", price: 120, blurb: "Captain, parrot, gold girl, sailor", pack: "pirates", emoji: tok("🏴‍☠️", "🦜", "🪙", "⚓") },
 
   // ---------- Card backs ----------
   { id: "cards-classic", kind: "cards", name: "Classic Blue", price: 0, blurb: "Casino card back", back: "back-classic.webp", felt: "felt-green.webp", tint: "#17663a" },
