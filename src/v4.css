@@ -2088,3 +2088,405 @@
   color: #831843;
   font-weight: 900;
 }
+
+/* ---------- Flying cards ---------- */
+
+.fly-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.fly-card {
+  position: fixed;
+  will-change: transform;
+  perspective: 600px;
+  filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.45));
+}
+
+.fly-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.fly-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  backface-visibility: hidden;
+}
+
+.fly-face > * {
+  width: 100% !important;
+  height: 100% !important;
+  --w: var(--fly-w);
+  margin: 0 !important;
+  animation: none !important;
+}
+
+.fly-face--back {
+  transform: rotateY(180deg);
+}
+
+.fly-face--back:only-child {
+  transform: none;
+}
+
+/* ---------- Game page ---------- */
+
+.game-page {
+  overflow-y: auto;
+  background: var(--cream);
+}
+
+.game-page-banner.game-card {
+  position: relative;
+  min-height: 200px;
+  border-radius: 0 0 24px 24px;
+  justify-content: flex-end;
+  padding: 18px;
+  cursor: default;
+}
+
+.game-page-banner .game-card-icon,
+.game-page-banner .game-card-body,
+.game-page-banner .game-card-cta {
+  display: none;
+}
+
+.game-page-back {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+}
+
+.game-page-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.game-page-star {
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: #3b82f6;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.game-page-star b {
+  position: absolute;
+  color: #fff;
+  font-size: 15px;
+  padding-top: 3px;
+}
+
+.game-page-meta {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+
+.game-page-meta h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.game-page-xp {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.6);
+  overflow: hidden;
+}
+
+.game-page-xp i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #84cc16, #22c55e);
+  border-radius: inherit;
+}
+
+.game-page-meta small {
+  font-weight: 800;
+}
+
+.game-page-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.game-page-tabs button {
+  flex: none;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--ink-soft);
+  font-weight: 900;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.game-page-tabs button.is-active {
+  color: var(--pink-600);
+  border-bottom-color: var(--pink-500);
+}
+
+.game-page-body {
+  padding: 14px;
+  width: min(100%, 720px);
+  margin: 0 auto;
+}
+
+.leaderboard {
+  display: grid;
+  gap: 8px;
+}
+
+.leader-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 6px 14px -10px rgba(80, 20, 80, 0.4);
+}
+
+.leader-row.is-me {
+  box-shadow: inset 0 0 0 2px var(--pink-400);
+}
+
+.leader-row.is-top-1 {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+}
+
+.leader-row.is-top-2 {
+  background: linear-gradient(135deg, #f1f5f9, #cbd5e1);
+}
+
+.leader-row.is-top-3 {
+  background: linear-gradient(135deg, #ffedd5, #fdba74);
+}
+
+.leader-rank {
+  width: 26px;
+  text-align: center;
+  font-weight: 900;
+  color: var(--ink-soft);
+}
+
+.leader-row.is-top .leader-rank {
+  color: #b45309;
+}
+
+.leader-name {
+  flex: 1;
+  font-weight: 800;
+}
+
+.leader-score {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #fde047;
+  color: #422006;
+  font-weight: 900;
+}
+
+.leader-score small {
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.rules {
+  display: grid;
+  gap: 10px;
+}
+
+.rules section {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 6px 14px -10px rgba(80, 20, 80, 0.4);
+}
+
+.rules h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.rules p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* ---------- In game: turn pill, log, win cards ---------- */
+
+.game-player {
+  position: relative;
+}
+
+.turn-pill {
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  padding: 2px 9px 3px;
+  border-radius: 999px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px -4px rgba(37, 99, 235, 0.8);
+  z-index: 2;
+}
+
+.turn-timer {
+  display: block;
+  height: 3px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #fde047, #ef4444);
+  transform-origin: left;
+  animation: turnTimer 30s linear forwards;
+}
+
+@keyframes turnTimer {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.game-log-stack {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+}
+
+.game-log--old {
+  opacity: 0.55;
+  font-size: 0.86em;
+  animation: none;
+}
+
+.log-color {
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.log-color--red {
+  color: #ef4444;
+}
+
+.log-color--yellow {
+  color: #eab308;
+}
+
+.log-color--green {
+  color: #22c55e;
+}
+
+.log-color--blue {
+  color: #3b82f6;
+}
+
+.win-title {
+  font: 900 clamp(24px, 5vw, 34px) / 1.1 var(--font-display, system-ui);
+  color: #facc15;
+  -webkit-text-stroke: 1px rgba(120, 53, 15, 0.5);
+  text-shadow: 0 3px 0 #b45309, 0 6px 14px rgba(0, 0, 0, 0.35);
+  animation: popIn 0.5s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+
+.win-cards {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+.win-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 104px;
+  padding: 10px 6px 14px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #3b82f6, #1d4ed8);
+  border: 4px solid #fff;
+  color: #fff;
+  box-shadow: 0 14px 24px -12px rgba(0, 0, 0, 0.6);
+  transform: rotate(var(--tilt));
+  animation: winCardIn 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+
+.win-card:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.win-card:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes winCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(60px) rotate(0deg) scale(0.6);
+  }
+}
+
+.win-card.is-winner {
+  background: linear-gradient(160deg, #6d28d9, #3b0764);
+}
+
+.win-card b {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.win-card em {
+  font-style: normal;
+  font-weight: 900;
+  font-size: 18px;
+  opacity: 0.85;
+}
+
+.win-medal {
+  position: absolute;
+  left: -12px;
+  bottom: -12px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fef08a, #f59e0b 60%, #b45309);
+  color: #fff;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  animation: medalSpin 0.8s ease-out 0.5s both;
+}
+
+@keyframes medalSpin {
+  from {
+    transform: scale(0) rotate(-180deg);
+  }
+}

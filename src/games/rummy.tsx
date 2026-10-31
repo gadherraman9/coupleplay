@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GameDef, GameViewProps } from "./types";
 import { CardBack, cardLabel, makeDeck, PlayingCard, rankLabel, seatOrder } from "./deck";
 import type { PCard } from "./deck";
 import { shuffle } from "./types";
+import { useCardFlights } from "./cardFly";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
 
@@ -287,13 +288,17 @@ function RummyView({ state, me, names, act, finished }: GameViewProps<State, Act
 
   const others = seatOrder(state.players, me).slice(1);
 
+  const flyRoot = useRef<HTMLDivElement>(null);
+  const flyLayer = useCardFlights({ root: flyRoot, me, snapshot: { hands: Object.fromEntries(state.players.map((p, i) => [p, state.hands[i] ?? []])), pile: state.discard, round: state.deal }, renderFace: (card) => <PlayingCard card={card} small />, renderBack: () => <CardBack small />, dealLimit: 4 });
+
   return (
-    <div className="board-game rummy-game">
+    <div className="board-game rummy-game" ref={flyRoot}>
+      {flyLayer}
       <div className="opponents">
         {others.map((player) => {
           const seat = state.players.indexOf(player);
           return (
-            <span key={player} className={`opponent ${state.turn === seat ? "is-turn" : ""}`}>
+            <span key={player} className={`opponent ${state.turn === seat ? "is-turn" : ""}`} data-fly-seat={player}>
               <span className="opponent-fan">
                 {state.hands[seat].slice(0, 7).map((c) => (
                   <CardBack key={c.id} tiny />
@@ -314,6 +319,7 @@ function RummyView({ state, me, names, act, finished }: GameViewProps<State, Act
         <button
           type="button"
           className={`rummy-pile ${myTurn && state.phase === "draw" ? "is-ready" : ""}`}
+          data-fly-deck
           disabled={!myTurn || state.phase !== "draw"}
           onClick={() => act({ type: "draw", from: "deck" })}
           aria-label="Draw from the deck"
@@ -324,6 +330,8 @@ function RummyView({ state, me, names, act, finished }: GameViewProps<State, Act
         <button
           type="button"
           className={`rummy-pile ${myTurn && state.phase === "draw" && top ? "is-ready" : ""}`}
+          data-fly-pile-spot
+          data-fly-pile={top?.id}
           disabled={!myTurn || state.phase !== "draw" || !top}
           onClick={() => act({ type: "draw", from: "discard" })}
           aria-label="Take the open card"
@@ -377,6 +385,7 @@ function RummyView({ state, me, names, act, finished }: GameViewProps<State, Act
                   key={card.id}
                   type="button"
                   className={`hand-card ${picked === card.id ? "is-picked" : ""} ${myTurn && state.phase === "discard" ? "is-playable" : ""}`}
+                  data-fly-card={card.id}
                   disabled={!myTurn || state.phase !== "discard"}
                   onClick={() => {
                     setPicked(picked === card.id ? null : card.id);

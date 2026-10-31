@@ -23,6 +23,8 @@ export interface User {
   rewardDay?: string;
   rewardStreak?: number;
   // Today's mission progress (see progress.ts).
+  // Played / won per game id, for each game's page and leaderboard.
+  gameStats?: Record<string, { played: number; won: number }>;
   missions?: { day: string; played: number; won: number; cards: number; board: number; claimed: string[] };
   suspended?: boolean;
   createdAt: number;

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MessageCircle, Music, Music2, RefreshCw, Trophy, Volume2, VolumeX, X } from "lucide-react";
+import { MessageCircle, Music, Music2, RefreshCw, Sparkles, Trophy, Volume2, VolumeX, X } from "lucide-react";
+import { SkinPicker, skinKindOf } from "./GamePage";
+import Sheet from "./Sheet";
 import { isMusicOn, onMusicChange, setMusicOn, startMusic, stopMusic } from "../games/music";
 import { api, areFriends } from "../backend/store";
 import { attempt, useApp } from "../context";
@@ -8,7 +10,7 @@ import { isBotPlayer } from "../games/types";
 import { isMuted, onMuteChange, play, setMuted } from "../games/sfx";
 import { Confetti } from "../games/ui";
 import { useFelt } from "../games/deck";
-import { ClipPlayer, preloadClip } from "../games/clips";
+import { ClipPlayer } from "../games/clips";
 import ConversationView from "./ConversationView";
 import { UserAvatar } from "./Avatar";
 import PlayerProfileSheet from "./PlayerProfileSheet";
@@ -21,6 +23,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const session = db.games.find((g) => g.id === sessionId);
   const def = session ? gameById(session.game) : undefined;
   const [chatOpen, setChatOpen] = useState(false);
+  const [itemsOpen, setItemsOpen] = useState(false);
   const [profile, setProfile] = useState<string | null>(null);
   const [, setNow] = useState(0);
   const seenMessages = useRef<number | null>(null);
@@ -31,7 +34,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
     const s = db.games.find((g) => g.id === sessionId);
     return Boolean(s && (s.game === "ludo" || s.game === "snakes") && s.rev === 0 && Date.now() - s.createdAt < 15_000);
   });
-  useEffect(() => preloadClip("win"), []);
+
   useEffect(() => onMuteChange(setMutedState), []);
   const [music, setMusicState] = useState(isMusicOn());
   useEffect(() => onMusicChange(setMusicState), []);
@@ -201,6 +204,11 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         <button type="button" className="round-btn" onClick={() => setMuted(!muted)} aria-label={muted ? "Turn sound on" : "Turn sound off"}>
           {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
         </button>
+        {skinKindOf(def.id, def.felt) && (
+          <button type="button" className="round-btn items-btn" onClick={() => setItemsOpen(true)} aria-label="Items: change skin">
+            <Sparkles size={17} />
+          </button>
+        )}
         <button type="button" className={`round-btn ${music ? "" : "is-off"}`} onClick={() => setMusicOn(!music)} aria-label={music ? "Turn music off" : "Turn music on"}>
           {music ? <Music size={17} /> : <Music2 size={17} opacity={0.4} />}
         </button>
@@ -222,6 +230,12 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
                 {player !== me.id && !isBotPlayer(player) && !db.users[player]?.isBot && !areFriends(db, me.id, player) && <i className="game-player-tag">new</i>}
               </span>
               {bubbles.get(player) && <span key={bubbles.get(player)} className="speech-bubble">{bubbles.get(player)}</span>}
+              {player === current && !finished && (
+                <span className="turn-pill">
+                  {player === me.id ? "Your turn" : "Playing…"}
+                  <i key={session.rev} className="turn-timer" />
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -240,10 +254,25 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         {finished && !def.soloOnly && (
           <div className={`win-banner ${session.winner === me.id ? "is-win" : ""}`}>
             {session.winner === me.id && <ClipPlayer name="win" className="win-clip" hold />}
-            <span className="win-trophy">
-              <Trophy size={28} />
-            </span>
-            <strong>{session.winner === me.id ? "You won! 🎉" : `${names[session.winner ?? ""] ?? "Someone"} won`}</strong>
+            <strong className="win-title">{session.winner === me.id ? "YOU WON! 🎉" : `${(names[session.winner ?? ""] ?? "Someone").toUpperCase()} WON!`}</strong>
+            <div className="win-cards">
+              {[...session.players]
+                .sort((a, b) => (a === session.winner ? -1 : b === session.winner ? 1 : 0))
+                .slice(0, 4)
+                .map((player, i) => (
+                  <span key={player} className={`win-card ${player === session.winner ? "is-winner" : ""}`} style={{ ["--tilt" as string]: `${(i % 2 ? 1 : -1) * (4 + i)}deg` }}>
+                    <b>{names[player]}</b>
+                    <UserAvatar id={player} size={64} showOnline={false} />
+                    {player === session.winner ? (
+                      <span className="win-medal">
+                        <Trophy size={20} />
+                      </span>
+                    ) : (
+                      <em>OUT</em>
+                    )}
+                  </span>
+                ))}
+            </div>
             {reward && (
               <span className="reward-strip">
                 {reward.hearts > 0 && <span className="reward-hearts">+{reward.hearts} ❤</span>}
@@ -272,6 +301,12 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
           </div>
           <ConversationView convId={session.convId} group={humans.length > 2} compact emptyTitle="Talk while you play" quickReplies={GAME_PHRASES} />
         </div>
+      )}
+
+      {itemsOpen && skinKindOf(def.id, def.felt) && (
+        <Sheet title="Items · change your look" onClose={() => setItemsOpen(false)}>
+          <SkinPicker kind={skinKindOf(def.id, def.felt)!} />
+        </Sheet>
       )}
 
       {profile && (

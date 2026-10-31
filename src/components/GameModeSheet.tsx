@@ -10,9 +10,11 @@ interface GameModeSheetProps {
   gameId: string;
   onClose: () => void;
   onFindStrangers: (gameId: string) => void;
+  // Inside the game page: no sheet around it.
+  embedded?: boolean;
 }
 
-export default function GameModeSheet({ gameId, onClose, onFindStrangers }: GameModeSheetProps) {
+export default function GameModeSheet({ gameId, onClose, onFindStrangers, embedded }: GameModeSheetProps) {
   const { db, me, playGame, nameOf } = useApp();
   const def = gameById(gameId);
   const [bots, setBots] = useState(1);
@@ -25,8 +27,8 @@ export default function GameModeSheet({ gameId, onClose, onFindStrangers }: Game
     onClose();
   };
 
-  return (
-    <Sheet title={`${def.emoji} ${def.title}`} onClose={onClose}>
+  const body = (
+    <>
       {step === "mode" ? (
         <div className="mode-list">
           <div className="mode-option">
@@ -95,6 +97,11 @@ export default function GameModeSheet({ gameId, onClose, onFindStrangers }: Game
           <button type="button" className="text-link" onClick={() => setStep("mode")}>Back</button>
         </div>
       )}
+    </>
+  );
+  return embedded ? body : (
+    <Sheet title={`${def.emoji} ${def.title}`} onClose={onClose}>
+      {body}
     </Sheet>
   );
 }

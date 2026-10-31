@@ -3,7 +3,7 @@ import { Check, ShieldAlert } from "lucide-react";
 import BottomNav from "./components/BottomNav";
 import type { Tab } from "./components/BottomNav";
 import GameHost from "./components/GameHost";
-import GameModeSheet from "./components/GameModeSheet";
+import GamePage from "./components/GamePage";
 import GameOverlay from "./components/GameOverlay";
 import Matchmaking from "./components/Matchmaking";
 import DailyReward from "./components/DailyReward";
@@ -234,7 +234,7 @@ export default function App() {
                 </div>
               )}
 
-              {modeSheet && <GameModeSheet gameId={modeSheet} onClose={() => setModeSheet(null)} onFindStrangers={setMatching} />}
+              {modeSheet && <GamePage gameId={modeSheet} onClose={() => setModeSheet(null)} onFindStrangers={setMatching} />}
               {matching && <Matchmaking gameId={matching} onClose={() => setMatching(null)} />}
               {intro && (
                 <div className="intro-splash" onClick={closeIntro}>

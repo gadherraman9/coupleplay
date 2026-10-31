@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GameDef, GameViewProps } from "./types";
 import { CardBack, makeDeck, PlayingCard, seatOrder } from "./deck";
 import type { PCard } from "./deck";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
+import { useCardFlights } from "./cardFly";
 import { skinArt } from "../skins";
 
 const CHIP_ART = ["chip-red.webp", "chip-blue.webp", "chip-gold.webp"].map((n) => skinArt(n));
@@ -422,8 +423,12 @@ function PokerView({ state, me, names, act, finished }: GameViewProps<State, Act
   const showCards = (i: number) => i === mySeat || (state.reveal && inHand(state.seats[i]));
   const best = !seat || !inHand(seat) || seat.cards.length < 2 ? null : state.board.length >= 3 ? handName(bestHand([...seat.cards, ...state.board])) : seat.cards[0].r === seat.cards[1].r ? "Pocket pair" : null;
 
+  const flyRoot = useRef<HTMLDivElement>(null);
+  const flyLayer = useCardFlights({ root: flyRoot, me, snapshot: { hands: Object.fromEntries(state.players.map((p, i) => [p, state.seats[i].cards])), pile: [], round: state.hand }, renderFace: (card) => <PlayingCard card={card} />, renderBack: () => <CardBack />, dealLimit: 2 });
+
   return (
-    <div className="board-game poker-game">
+    <div className="board-game poker-game" ref={flyRoot}>
+      {flyLayer}
       <div className="poker-table">
         <div className="poker-rail" />
         {order.map((player, k) => {
@@ -434,6 +439,7 @@ function PokerView({ state, me, names, act, finished }: GameViewProps<State, Act
             <div
               key={player}
               className={`poker-seat ${state.turn === i ? "is-turn" : ""} ${s.folded ? "is-folded" : ""} ${s.out ? "is-out" : ""} ${winners.has(i) ? "is-winner" : ""}`}
+              data-fly-seat={player}
               style={{ left: `${x}%`, top: `${y}%` }}
             >
               <span className="poker-hole">
@@ -451,7 +457,7 @@ function PokerView({ state, me, names, act, finished }: GameViewProps<State, Act
         })}
 
         <div className="poker-center">
-          <div className="poker-board">
+          <div className="poker-board" data-fly-deck>
             {Array.from({ length: 5 }, (_, i) =>
               state.board[i] ? (
                 <PlayingCard key={state.board[i].id} card={state.board[i]} small className="flip-in" style={{ animationDelay: `${(i < 3 && state.board.length === 3 ? i : 0) * 120}ms` }} />
@@ -473,7 +479,7 @@ function PokerView({ state, me, names, act, finished }: GameViewProps<State, Act
       {seat && (
         <div className={`poker-me ${state.turn === mySeat ? "is-turn" : ""} ${winners.has(mySeat) ? "is-winner" : ""}`}>
           <Chips amount={seat.bet} className="poker-bet--me" />
-          <div className="poker-my-cards">
+          <div className="poker-my-cards" data-fly-hand>
             {seat.cards.map((c, n) => (
               <PlayingCard key={c.id} card={c} className={`deal-in ${seat.folded ? "is-dim" : ""}`} style={{ animationDelay: `${n * 120}ms` }} />
             ))}

@@ -6,7 +6,9 @@ import { isMuted } from "./sfx";
 export type ClipName = "gun" | "axe" | "win" | "dice" | "intro";
 
 const base = import.meta.env.BASE_URL;
-export const clipSrc = (name: ClipName) => `${base}media/${name}.mp4`;
+// Phones get the 720p file, big screens the 1080p one.
+const hd = typeof window !== "undefined" && window.innerWidth >= 900 && window.innerWidth * (window.devicePixelRatio || 1) >= 1400;
+export const clipSrc = (name: ClipName) => `${base}media/${name}-${hd ? 1080 : 720}.mp4`;
 export const clipPoster = (name: ClipName) => `${base}media/${name}.jpg`;
 
 // Warms the browser cache so the clip starts instantly when needed.

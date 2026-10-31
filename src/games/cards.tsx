@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { GameDef, GameViewProps } from "./types";
 import { shuffle } from "./types";
+import { useCardFlights } from "./cardFly";
+import { CardBack } from "./deck";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
 import { skinArt, useSkin } from "../skins";
@@ -110,11 +112,15 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
   useOnChange(totalCards, (prev, next) => next > prev && play("draw"));
   useOnChange(state.color, () => state.discard[state.discard.length - 1]?.color === "wild" && play("coin"));
 
+  const flyRoot = useRef<HTMLDivElement>(null);
+  const flyLayer = useCardFlights({ root: flyRoot, me, snapshot: { hands: state.hands, pile: state.discard, round: 0 }, renderFace: (card) => <CardFace card={card} />, renderBack: () => <CardBack /> });
+
   return (
-    <div className="board-game cards-game">
+    <div className="board-game cards-game" ref={flyRoot}>
+      {flyLayer}
       <div className="opponents">
         {state.players.filter((p) => p !== me).map((player) => (
-          <span key={player} className={`opponent ${player === current ? "is-turn" : ""}`}>
+          <span key={player} className={`opponent ${player === current ? "is-turn" : ""}`} data-fly-seat={player}>
             <span className="opponent-fan">
               {Array.from({ length: Math.min(state.hands[player].length, 7) }, (_, i) => (
                 <span key={i} className="card-back" style={backStyle} />
@@ -130,9 +136,9 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
         <button type="button" className="card-back card-back--deck" style={backStyle} disabled={!myTurn || state.drew} onClick={() => act({ type: "draw" })} aria-label="Draw a card">
           <span>Draw</span>
         </button>
-        <span className="discard-pile">
+        <span className="discard-pile" data-fly-pile-spot>
           {state.discard.slice(-3).map((card, i, pile) => (
-            <span key={card.id} className={`discard-card ${i === pile.length - 1 ? "is-top" : ""}`} style={{ transform: `rotate(${tilt(card.id)}deg)` }}>
+            <span key={card.id} data-fly-pile={card.id} className={`discard-card ${i === pile.length - 1 ? "is-top" : ""}`} style={{ transform: `rotate(${tilt(card.id)}deg)` }}>
               <CardFace card={card} />
             </span>
           ))}
@@ -170,6 +176,7 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
               key={card.id}
               type="button"
               className={`hand-card ${ok ? "is-playable" : ""}`}
+              data-fly-card={card.id}
               style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
               disabled={!ok}
               onClick={() => (card.color === "wild" ? setChoosing(card.id) : act({ type: "play", card: card.id }))}
@@ -251,7 +258,7 @@ export const cardsGame: GameDef<State, Action> = {
       color: card.color === "wild" ? action.color ?? "red" : card.color,
       drew: false,
     };
-    let log = `played ${LABEL[card.value] ?? card.value}${card.color === "wild" ? ` and picked ${next.color}` : ""}`;
+    let log = `played ${card.color === "wild" ? "" : `${card.color} `}${LABEL[card.value] ?? card.value}${card.color === "wild" ? ` and picked ${next.color}` : ""}`;
     if (hand.length === 0) return { ...next, winner: by, log: `${by}|played the last card and won! 🎉` };
     if (hand.length === 1) log += " — LAST CARD!";
 
@@ -266,6 +273,7 @@ export const cardsGame: GameDef<State, Action> = {
       const victim = state.players[victimSeat];
       const { deck, discard, drawn } = draw(next, card.value === "draw2" ? 2 : 4);
       next = { ...next, deck, discard, hands: { ...next.hands, [victim]: [...next.hands[victim], ...drawn] } };
+      log += ` — @[${victim}] drew ${drawn.length} cards`;
       skip = 2;
     }
     return { ...next, turn: step(next, seat, skip), log: `${by}|${log}` };

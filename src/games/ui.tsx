@@ -69,15 +69,41 @@ export function Dice({ value, small, nonce }: { value: number | null; small?: bo
 
 // Game logs are stored as "playerId|text" (and "@[playerId]" inside the text)
 // so each client shows its own names.
-export function LogLine({ log, names }: { log: string; names: Record<string, string> }) {
+const COLOR_WORD = /\b(red|yellow|green|blue)\b/gi;
+
+function LogText({ log, names }: { log: string; names: Record<string, string> }) {
   const withNames = (text: string) => text.replace(/@\[([^\]]+)\]/g, (_, id: string) => names[id] ?? "someone");
+  const tint = (text: string) =>
+    text.split(COLOR_WORD).map((part, i) => (i % 2 ? <b key={i} className={`log-color log-color--${part.toLowerCase()}`}>{part}</b> : part));
   const split = log.indexOf("|");
-  if (split < 0) return <p key={log} className="game-log">{withNames(log)}</p>;
+  if (split < 0) return <>{tint(withNames(log))}</>;
   const who = log.slice(0, split);
   return (
-    <p key={log} className="game-log">
-      <strong>{names[who] ?? "Someone"}</strong> {withNames(log.slice(split + 1))}
-    </p>
+    <>
+      <strong>{names[who] ?? "Someone"}</strong> {tint(withNames(log.slice(split + 1)))}
+    </>
+  );
+}
+
+export function LogLine({ log, names }: { log: string; names: Record<string, string> }) {
+  // Remember the last two lines before this one (per mounted game).
+  const history = useRef<string[]>([]);
+  const last = useRef(log);
+  if (last.current !== log) {
+    history.current = [last.current, ...history.current].slice(0, 2);
+    last.current = log;
+  }
+  return (
+    <div className="game-log-stack">
+      {[...history.current].reverse().map((line, i) => (
+        <p key={`${line}-${i}`} className="game-log game-log--old">
+          <LogText log={line} names={names} />
+        </p>
+      ))}
+      <p key={log} className="game-log">
+        <LogText log={log} names={names} />
+      </p>
+    </div>
   );
 }
 

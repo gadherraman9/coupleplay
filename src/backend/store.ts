@@ -676,6 +676,8 @@ export const api = {
         }
       }
       user.missions = m;
+      const stats = user.gameStats?.[game] ?? { played: 0, won: 0 };
+      user.gameStats = { ...user.gameStats, [game]: { played: stats.played + 1, won: stats.won + (won && !solo ? 1 : 0) } };
       const after = levelOf(user.xp);
       const levelReward = after > before ? LEVEL_REWARD(after) : 0;
       hearts += levelReward;

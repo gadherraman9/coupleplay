@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { GameDef, GameViewProps } from "./types";
 import { CardBack, cardLabel, makeDeck, PlayingCard, seatOrder, sortHand } from "./deck";
 import type { PCard, Suit } from "./deck";
 import { play } from "./sfx";
 import { LogLine, useOnChange } from "./ui";
+import { useCardFlights } from "./cardFly";
 
 // Call Break: 4 players, 13 cards each, spades are always trump.
 // Bid how many tricks you'll win; make it and score your bid (+0.1 per extra
@@ -162,11 +163,22 @@ function CallBreakView({ state, me, names, act, finished }: GameViewProps<State,
   const center = state.trick.length ? state.trick : state.lastTrick?.cards ?? [];
   const collecting = state.trick.length === 0 && state.lastTrick ? spotOf(state.lastTrick.winner) : null;
 
+  const flyRoot = useRef<HTMLDivElement>(null);
+  const flyLayer = useCardFlights({
+    root: flyRoot,
+    me,
+    snapshot: { hands: Object.fromEntries(state.players.map((p, i) => [p, state.hands[i] ?? []])), pile: (state.trick.length ? state.trick : state.lastTrick?.cards ?? []).map((p) => p.card), round: state.round },
+    renderFace: (card) => <PlayingCard card={card} small />,
+    renderBack: () => <CardBack small />,
+    dealLimit: 5,
+  });
+
   return (
-    <div className="board-game cb-game">
+    <div className="board-game cb-game" ref={flyRoot}>
+      {flyLayer}
       <div className="cb-table">
         {[0, 1, 2, 3].filter((s) => s !== mySeat).map((seat) => (
-          <div key={seat} className={`cb-seat cb-seat--${spotOf(seat)} ${state.turn === seat && !finished ? "is-turn" : ""}`}>
+          <div key={seat} className={`cb-seat cb-seat--${spotOf(seat)} ${state.turn === seat && !finished ? "is-turn" : ""}`} data-fly-seat={state.players[seat]}>
             <span className="cb-fan">
               {state.hands[seat].slice(0, 13).map((c) => (
                 <CardBack key={c.id} tiny />
@@ -183,7 +195,7 @@ function CallBreakView({ state, me, names, act, finished }: GameViewProps<State,
 
         <div className={`cb-trick ${collecting ? `is-collect is-collect--${collecting}` : ""}`} key={collecting ? `c${state.played.length}` : "live"}>
           {center.map((p) => (
-            <span key={p.card.id} className={`cb-played cb-played--${spotOf(p.seat)}`}>
+            <span key={p.card.id} className={`cb-played cb-played--${spotOf(p.seat)}`} data-fly-pile={p.card.id}>
               <PlayingCard card={p.card} small />
             </span>
           ))}
@@ -258,6 +270,7 @@ function CallBreakView({ state, me, names, act, finished }: GameViewProps<State,
               key={card.id}
               type="button"
               className={`hand-card ${ok ? "is-playable" : ""} ${myTurn && state.phase === "play" && !ok ? "is-blocked" : ""}`}
+              data-fly-card={card.id}
               style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}
               disabled={!ok}
               onClick={() => act({ type: "play", card: card.id })}
