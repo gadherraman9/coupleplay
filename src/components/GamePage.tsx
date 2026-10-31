@@ -5,7 +5,8 @@ import { attempt, useApp } from "../context";
 import { gameById } from "../games/registry";
 import { GENERIC_RULES, RULES } from "../games/rules";
 import { levelProgress } from "../progress";
-import { defaultSkin, SKINS, skinArt } from "../skins";
+import { defaultSkin, SKINS, tableFor } from "../skins";
+import SkinPreview from "./SkinPreview";
 import type { Skin, SkinKind } from "../skins";
 import { UserAvatar } from "./Avatar";
 import GameModeSheet from "./GameModeSheet";
@@ -14,14 +15,38 @@ import GameModeSheet from "./GameModeSheet";
 export function skinKindOf(gameId: string, felt?: boolean): SkinKind | null {
   if (gameId === "ludo") return "ludo";
   if (gameId === "snakes") return "snakes";
+  if (gameId === "tycoon") return "dice";
   return felt ? "cards" : null;
+}
+
+// Pickers shown together for a game: its board plus goti and dice, or card
+// backs plus table colours.
+const RELATED: Partial<Record<SkinKind, [SkinKind, string][]>> = {
+  ludo: [["ludo", "Boards (with music)"], ["token", "Goti"], ["dice", "Dice"]],
+  snakes: [["snakes", "Boards (with music)"], ["token", "Goti"], ["dice", "Dice"]],
+  cards: [["cards", "Card backs"], ["table", "Table colours"]],
+};
+
+export function SkinPicker({ kind, ownedOnly = false }: { kind: SkinKind; ownedOnly?: boolean }) {
+  const groups = RELATED[kind];
+  if (!groups) return <SkinGrid kind={kind} ownedOnly={ownedOnly} />;
+  return (
+    <>
+      {groups.map(([k, title]) => (
+        <section key={k} className="skin-section">
+          <h3>{title}</h3>
+          <SkinGrid kind={k} ownedOnly={ownedOnly} />
+        </section>
+      ))}
+    </>
+  );
 }
 
 type Tab = "play" | "shop" | "leaders" | "rules";
 
-export function SkinPicker({ kind, ownedOnly = false }: { kind: SkinKind; ownedOnly?: boolean }) {
+function SkinGrid({ kind, ownedOnly }: { kind: SkinKind; ownedOnly: boolean }) {
   const { me, notify } = useApp();
-  const current = me.skins?.[kind] ?? defaultSkin(kind).id;
+  const current = kind === "table" ? tableFor(me.skins).id : me.skins?.[kind] ?? defaultSkin(kind).id;
   const list = SKINS.filter((s) => s.kind === kind && (!ownedOnly || s.price === 0 || me.ownedThemes.includes(s.id)));
   const choose = (skin: Skin) => {
     const free = skin.price === 0;
@@ -39,13 +64,9 @@ export function SkinPicker({ kind, ownedOnly = false }: { kind: SkinKind; ownedO
     <div className="shop-grid shop-grid--skins">
       {list.map((skin) => {
         const owned = skin.price === 0 || me.ownedThemes.includes(skin.id);
-        const art = skinArt(skin.preview) ?? skinArt(skin.board) ?? skinArt(skin.felt);
-        const back = skinArt(skin.back);
         return (
           <button key={skin.id} type="button" className={`shop-item shop-item--skin ${current === skin.id ? "is-active" : ""}`} onClick={() => choose(skin)}>
-            <span className="skin-preview" style={{ background: skin.tint ?? "linear-gradient(135deg,#fde68a,#f9a8d4)", ...(art ? { backgroundImage: `url(${art})` } : null) }}>
-              {back && <img src={back} alt="" />}
-            </span>
+            <SkinPreview skin={skin} />
             <strong>{skin.name}</strong>
             <small>
               {current === skin.id ? (

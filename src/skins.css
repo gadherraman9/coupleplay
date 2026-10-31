@@ -196,3 +196,35 @@
   color: rgba(30, 41, 59, 0.75);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
 }
+
+.skin-preview--token img,
+.skin-preview--dice img {
+  aspect-ratio: auto;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  object-fit: contain;
+}
+
+.skin-preview--token img {
+  height: auto;
+  max-height: 100%;
+}
+
+.skin-preview--dice .die--art img {
+  width: 100%;
+  height: 100%;
+}
+
+/* Character goti read better a bit bigger than the old pawns. */
+.ludo-token.is-pawn-art {
+  width: 7.4%;
+  height: 7.4%;
+  margin: -5% 0 0 -3.7%;
+}
+
+.ludo-token.is-pawn-art.is-stacked {
+  width: 6%;
+  height: 6%;
+  margin: -4% 0 0 -3%;
+}

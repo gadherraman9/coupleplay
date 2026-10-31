@@ -254,7 +254,7 @@ function SnakesView({ state, me, names, act, finished }: GameViewProps<State, Ac
                 <g key={pos} className="pawn-hop">
                   <ellipse cx="0" cy="2.3" rx="2.4" ry="0.9" fill="rgba(0,0,0,0.28)" />
                   {token.art ? (
-                    <image href={token.art} x="-2.9" y="-6" width="5.8" height="8.6" preserveAspectRatio="xMidYMax meet" />
+                    <image href={token.art} x="-3.6" y="-7.4" width="7.2" height="10" preserveAspectRatio="xMidYMax meet" />
                   ) : token.emoji ? (
                     <>
                       <circle cx="0" cy="-0.6" r="2.7" fill={`url(#pawn-${index})`} stroke="#fff" strokeWidth="0.45" />
