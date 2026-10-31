@@ -8,6 +8,7 @@ import { isBotPlayer } from "../games/types";
 import { isMuted, onMuteChange, play, setMuted } from "../games/sfx";
 import { Confetti } from "../games/ui";
 import { useFelt } from "../games/deck";
+import { ClipPlayer, preloadClip } from "../games/clips";
 import ConversationView from "./ConversationView";
 import { UserAvatar } from "./Avatar";
 import PlayerProfileSheet from "./PlayerProfileSheet";
@@ -25,6 +26,12 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const seenMessages = useRef<number | null>(null);
   const [muted, setMutedState] = useState(isMuted());
   const felt = useFelt();
+  // A quick dice-roll clip when a fresh Ludo / Snakes game opens.
+  const [diceIntro, setDiceIntro] = useState(() => {
+    const s = db.games.find((g) => g.id === sessionId);
+    return Boolean(s && (s.game === "ludo" || s.game === "snakes") && s.rev === 0 && Date.now() - s.createdAt < 15_000);
+  });
+  useEffect(() => preloadClip("win"), []);
   useEffect(() => onMuteChange(setMutedState), []);
   const [music, setMusicState] = useState(isMusicOn());
   useEffect(() => onMusicChange(setMusicState), []);
@@ -223,8 +230,16 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
       <div className={`game-body game-body--board game-table--${def.id} ${def.felt ? "game-table--felt" : ""}`} style={def.felt ? felt : undefined}>
         <View state={session.state} me={me.id} players={session.players} names={names} act={act} finished={finished} />
 
+        {diceIntro && (
+          <div className="clip-splash" onClick={() => setDiceIntro(false)}>
+            <ClipPlayer name="dice" rate={1.4} maxMs={3200} onEnd={() => setDiceIntro(false)} />
+            <strong>Let's roll! 🎲</strong>
+          </div>
+        )}
+
         {finished && !def.soloOnly && (
           <div className={`win-banner ${session.winner === me.id ? "is-win" : ""}`}>
+            {session.winner === me.id && <ClipPlayer name="win" className="win-clip" hold />}
             <span className="win-trophy">
               <Trophy size={28} />
             </span>

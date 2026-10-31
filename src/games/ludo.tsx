@@ -5,6 +5,7 @@ import { skinArt, useSkin } from "../skins";
 import { rollDie } from "./types";
 import { haptic, play } from "./sfx";
 import { Dice, LogLine, PlayerChips, useStepper } from "./ui";
+import { ClipPlayer, preloadClip } from "./clips";
 
 // The 52-square loop, clockwise from red's start square, as [row, col].
 const TRACK: [number, number][] = [
@@ -84,7 +85,8 @@ function cellOf(seat: number, pos: number, token: number): [number, number] {
 
 const PAWN = ["pawn-red.webp", "pawn-green.webp", "pawn-yellow.webp", "pawn-blue.webp"];
 const SOLDIER = ["soldier-red.webp", "soldier-green.webp", "soldier-yellow.webp", "soldier-blue.webp"];
-const FIGHT_MS = { aim: 350, hit: 750, fall: 1500 };
+// The scene runs as long as the Flow clip (about 4 s).
+const CLIP_FIGHT_MS = { aim: 500, hit: 1500, fall: 2500, fly: 3500 };
 
 interface Fight {
   victim: string;
@@ -101,6 +103,12 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
   const targets: Record<string, number> = {};
   state.players.forEach((player) => state.tokens[player].forEach((pos, t) => (targets[`${player}:${t}`] = pos)));
   const [fight, setFight] = useState<Fight | null>(null);
+  const [clipOn, setClipOn] = useState(false);
+  useEffect(() => {
+    if (!battle) return;
+    preloadClip("gun");
+    preloadClip("axe");
+  }, [battle]);
   const fightRef = useRef<Fight | null>(null);
   const timers = useRef<number[]>([]);
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
@@ -113,6 +121,8 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
     const next: Fight = { victim, attacker, weapon: (capture?.n ?? 0) % 2 === 1 ? "gun" : "axe", stage: "aim" };
     fightRef.current = next;
     setFight(next);
+    setClipOn(true);
+    const ms = { aim: CLIP_FIGHT_MS.aim, hit: CLIP_FIGHT_MS.hit, fall: CLIP_FIGHT_MS.fly };
     const stage = (name: Fight["stage"], at: number, sound?: () => void) =>
       timers.current.push(
         window.setTimeout(() => {
@@ -122,19 +132,22 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
           sound?.();
         }, at),
       );
-    stage("hit", FIGHT_MS.aim, () => {
+    stage("hit", ms.aim, () => {
       play(next.weapon === "gun" ? "gunshot" : "axe");
       haptic(60);
     });
-    stage("fall", FIGHT_MS.hit, () => play("fall"));
-    stage("fly", FIGHT_MS.fall, () => play("march"));
+    stage("fall", ms.hit, () => play("fall"));
+    stage("fly", ms.fall, () => {
+      setClipOn(false);
+      play("march");
+    });
     timers.current.push(
       window.setTimeout(() => {
         if (fightRef.current?.victim === victim) {
           fightRef.current = null;
           setFight(null);
         }
-      }, FIGHT_MS.fall + 1100),
+      }, ms.fall + 1100),
     );
   };
 
@@ -265,6 +278,11 @@ function LudoView({ state, me, names, act, finished }: GameViewProps<State, Acti
             </button>
           );
         })}
+        {fight && clipOn && (
+          <div className="ludo-clip" aria-hidden="true">
+            <ClipPlayer name={fight.weapon} sound maxMs={CLIP_FIGHT_MS.fly} onEnd={() => setClipOn(false)} />
+          </div>
+        )}
         {fight && fightCell && fight.stage !== "fly" && (
           <span
             className={`ludo-fx weapon-${fight.weapon} stage-${fight.stage}`}

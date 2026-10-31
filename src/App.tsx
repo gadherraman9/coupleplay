@@ -7,6 +7,7 @@ import GameModeSheet from "./components/GameModeSheet";
 import GameOverlay from "./components/GameOverlay";
 import Matchmaking from "./components/Matchmaking";
 import DailyReward from "./components/DailyReward";
+import { ClipPlayer } from "./games/clips";
 import { canClaimDaily } from "./progress";
 import { useBotBrain } from "./backend/bots";
 import { api, friendIds, getDB, onBackendError, useBackendReady, useDB, useSessionId } from "./backend/store";
@@ -41,15 +42,30 @@ export default function App() {
   const [matching, setMatching] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [dailyOpen, setDailyOpen] = useState(false);
+  const [intro, setIntro] = useState(() => {
+    try {
+      return localStorage.getItem("cp_intro_day") !== new Date().toISOString().slice(0, 10);
+    } catch {
+      return false;
+    }
+  });
+  const closeIntro = useCallback(() => {
+    setIntro(false);
+    try {
+      localStorage.setItem("cp_intro_day", new Date().toISOString().slice(0, 10));
+    } catch {
+      /* storage blocked */
+    }
+  }, []);
   const dailyShown = useRef(false);
   useEffect(() => {
-    if (!me || me.suspended || dailyShown.current || !canClaimDaily(me)) return;
+    if (!me || me.suspended || dailyShown.current || intro || !canClaimDaily(me)) return;
     const timer = window.setTimeout(() => {
       dailyShown.current = true;
       setDailyOpen(true);
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [me?.id, me?.rewardDay, me?.suspended]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me?.id, me?.rewardDay, me?.suspended, intro]); // eslint-disable-line react-hooks/exhaustive-deps
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useBotBrain(db, me?.id ?? null);
@@ -220,6 +236,18 @@ export default function App() {
 
               {modeSheet && <GameModeSheet gameId={modeSheet} onClose={() => setModeSheet(null)} onFindStrangers={setMatching} />}
               {matching && <Matchmaking gameId={matching} onClose={() => setMatching(null)} />}
+              {intro && (
+                <div className="intro-splash" onClick={closeIntro}>
+                  <ClipPlayer name="intro" maxMs={4500} onEnd={closeIntro} />
+                  <div className="intro-title">
+                    <strong>CouplePlay</strong>
+                    <span>Play together, wherever you are 💞</span>
+                  </div>
+                  <button type="button" className="intro-skip" onClick={closeIntro}>
+                    Skip
+                  </button>
+                </div>
+              )}
               {dailyOpen && <DailyReward onClose={() => setDailyOpen(false)} />}
               {gameSession && <GameHost key={gameSession} sessionId={gameSession} onClose={() => setGameSession(null)} />}
               {partyGame && (
