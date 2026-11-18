@@ -359,10 +359,6 @@ function newUser(fields: Partial<User> & { username: string; displayName: string
   };
 }
 
-function welcome(db: DB, user: User) {
-  db.requests.push({ id: uid(), from: "bot-priya", to: user.id, createdAt: Date.now() });
-}
-
 // ---------- auth ----------
 
 export const api = {
@@ -373,7 +369,6 @@ export const api = {
       while (findByUsername(db, name)) name = randomGuestName();
       const guest = newUser({ id, username: name.toLowerCase(), displayName: name, isGuest: true });
       db.users[guest.id] = guest;
-      welcome(db, guest);
       return guest;
     });
     setSessionId(user.id);
@@ -391,7 +386,6 @@ export const api = {
       if (findByUsername(db, username)) throw new Error("That username is taken");
       const created = newUser({ id, username, displayName: displayName?.trim() || usernameRaw.trim(), passwordHash });
       db.users[created.id] = created;
-      welcome(db, created);
       return created;
     });
     setSessionId(user.id);
