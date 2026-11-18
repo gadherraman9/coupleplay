@@ -183,7 +183,7 @@ function preloadCardSamples(ac: AudioContext) {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
     try {
-      const response = await fetch(`/media/audio/cards/${name}.ogg`, {
+      const response = await fetch(`${import.meta.env.BASE_URL}media/audio/cards/${name}.ogg`, {
         mode: "same-origin",
         redirect: "error",
         cache: "force-cache",
