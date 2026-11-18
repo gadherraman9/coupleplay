@@ -6,6 +6,7 @@ import { useCardFlights } from "./cardFly";
 import { CardBack } from "./deck";
 import { LogLine } from "./ui";
 import { useSkin } from "../skins";
+import { UserAvatar } from "../components/Avatar";
 import { backStyle, useTableSound } from "./deck";
 
 type Color = "red" | "yellow" | "green" | "blue";
@@ -31,7 +32,7 @@ interface State {
   winner: string | null;
 }
 
-type Action = { type: "play"; card: number; color?: Color } | { type: "draw" } | { type: "pass" };
+type Action = { type: "play"; card: number; color?: Color } | { type: "draw" } | { type: "pass" } | { type: "call" };
 
 const COLORS: Color[] = ["red", "yellow", "green", "blue"];
 const HEX: Record<Color | "wild", string> = {
@@ -85,16 +86,24 @@ const step = (state: State, by: number, times = 1) =>
 
 export function CardFace({ card, small, style }: { card: Card; small?: boolean; style?: CSSProperties }) {
   const label = LABEL[card.value] ?? card.value;
+  const wild = card.color === "wild";
   return (
     <span
-      className={`uno-card ${small ? "uno-card--small" : ""} ${card.color === "wild" ? "is-wild" : ""}`}
-      style={{ ["--card" as string]: HEX[card.color], ...style }}
+      className={`uno-card ${small ? "uno-card--small" : ""} ${wild ? "is-wild" : ""}`}
+      style={{ ["--card" as string]: wild ? "#20242b" : HEX[card.color], ...style }}
     >
-      <span className="uno-card-oval" style={{ color: card.color === "wild" ? "#1f1630" : HEX[card.color] }}>
-        {label}
-      </span>
-      <small>{label}</small>
-      <small className="uno-card-corner">{label}</small>
+      <span className="uno-card-corner">{label}</span>
+      {wild ? (
+        <span className="uno-wild">
+          <span className="uno-wild-square" aria-hidden="true">
+            {COLORS.map((color) => <i key={color} style={{ background: HEX[color] }} />)}
+          </span>
+          <b>{card.value === "wild4" ? "+4" : "Wild"}</b>
+        </span>
+      ) : (
+        <span className="uno-card-oval">{label}</span>
+      )}
+      <span className="uno-card-corner uno-card-corner--br">{label}</span>
     </span>
   );
 }
@@ -114,11 +123,12 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
   const slots = ["top", "left", "right"] as const;
   const slotFor = (index: number) => (opponents.length === 1 ? "top" : opponents.length === 2 ? (index === 0 ? "left" : "right") : slots[index]);
   const cardName = (card: Card) => `${card.color === "wild" ? "Wild" : card.color} ${LABEL[card.value] ?? card.value}`;
-  const turnText = finished
-    ? "Game over"
+  const canCall = !finished && hand.length <= 2;
+  const hint = finished
+    ? "Match complete"
     : myTurn
-      ? state.drew ? "Card drawn — play it or pass" : "Your turn — play a card or draw"
-      : `${names[current]} is thinking…`;
+      ? state.drew ? "Play the drawn card or pass" : hand.some((card) => playable(state, card)) ? "Tap a glowing card" : "No match — draw a card"
+      : `${names[current]} is playing…`;
 
   const flyRoot = useRef<HTMLDivElement>(null);
   const flyLayer = useCardFlights({ root: flyRoot, me, snapshot: { hands: state.hands, pile: state.discard, round: 0 }, renderFace: (card) => <CardFace card={card} />, renderBack: () => <CardBack /> });
@@ -127,9 +137,12 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
     <div className="board-game cards-game" ref={flyRoot}>
       {flyLayer}
       <div className="uno-hud">
+        <button type="button" className="uno-call" disabled={!canCall} onClick={() => act({ type: "call" })} aria-label="Call UNO">
+          UNO!
+        </button>
         <span className="uno-hud-title">
           <small>COLOR CARDS</small>
-          <b>{state.deck.length} in deck</b>
+          <b>{state.deck.length} left in deck</b>
         </span>
         <span className="uno-color-badge" style={{ ["--c" as string]: HEX[state.color] }}>
           <i aria-hidden="true" /> {state.color}
@@ -140,24 +153,28 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
       </div>
 
       <div className="uno-table">
-        <span className="uno-table-mark" aria-hidden="true">
-          <b>COLOR</b>
-          <span>CARDS</span>
-        </span>
+        <svg className={`uno-loop ${state.direction === -1 ? "is-reverse" : ""}`} viewBox="0 0 260 150" aria-hidden="true">
+          <defs>
+            <marker id="uno-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0 0 10 5 0 10 Z" fill="currentColor" />
+            </marker>
+          </defs>
+          <path d="M62 22C24 46 24 98 58 122" markerEnd="url(#uno-arrow)" />
+          <path d="M198 22C236 46 236 98 202 122" markerEnd="url(#uno-arrow)" />
+        </svg>
+
         {opponents.map((player, index) => {
           const count = state.hands[player].length;
           return (
             <div key={player} className={`uno-seat uno-seat--${slotFor(index)} ${player === current ? "is-turn" : ""}`} data-fly-seat={player}>
-              <span className="uno-fan" aria-hidden="true">
-                {Array.from({ length: Math.min(count, 3) }, (_, i) => <span key={i} className="card-back" style={backLook} />)}
-              </span>
-              <span className="uno-avatar" aria-hidden="true">
-                {(names[player] ?? "?").slice(0, 1).toUpperCase()}
-                <i>{count}</i>
-              </span>
               <span className="uno-seat-name">
+                <i className="uno-online" aria-hidden="true" />
                 <b>{names[player]}</b>
-                <small>{count === 1 ? "Last card!" : `${count} cards`}</small>
+                {count === 1 && <em>UNO!</em>}
+              </span>
+              <span className="uno-avatar">
+                <UserAvatar id={player} size={44} showOnline={false} />
+                <i className="uno-count">{count}</i>
               </span>
             </div>
           );
@@ -184,6 +201,10 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
             ))}
           </span>
         </div>
+
+        <div className="uno-log">
+          <LogLine log={state.log} names={names} />
+        </div>
       </div>
 
       {choosing !== null && (
@@ -204,6 +225,15 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
       )}
 
       <div className={`uno-dock ${myTurn ? "is-turn" : ""}`}>
+        <div className={`uno-now ${myTurn ? "is-you" : ""}`}>
+          <span className="uno-now-avatar">
+            <UserAvatar id={current} size={36} showOnline={false} />
+          </span>
+          <span className="uno-now-pill" role="status">
+            {myTurn ? "Your Turn" : finished ? "Game over" : `${names[current]}'s turn`}
+          </span>
+          <i className="uno-timer" aria-hidden="true" />
+        </div>
         <div className="uno-dock-meta">
           <span>
             <b>You</b> · {hand.length} {hand.length === 1 ? "card" : "cards"}
@@ -213,7 +243,7 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
               Pass
             </button>
           ) : (
-            <p className="turn-label" role="status">{turnText}</p>
+            <small className="uno-hint">{hint}</small>
           )}
         </div>
         <div className="uno-hand-scroll">
@@ -237,7 +267,6 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
             })}
           </div>
         </div>
-        <LogLine log={state.log} names={names} />
       </div>
     </div>
   );
@@ -279,6 +308,11 @@ export const cardsGame: GameDef<State, Action> = {
   },
   apply: (state, action, by) => {
     if (state.winner) return state;
+    if (action.type === "call") {
+      const hand = state.hands[by];
+      if (!hand || hand.length > 2) return state;
+      return { ...state, log: `${by}|yelled UNO!` };
+    }
     const seat = state.players.indexOf(by);
     if (seat !== state.turn) return state;
 
