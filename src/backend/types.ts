@@ -133,6 +133,9 @@ export interface GameRewardReceipt {
   // Eligibility snapshot: reciprocal humans present in this session's roster.
   // One partner's receipt is enough; never write the other profile.
   couple?: { players: [string, string]; xp: number };
+  // Hearts bet: the stake was taken when the game started, payout is the pot
+  // returned on a win (or the stake refunded on a draw).
+  wager?: { stake: number; pot: number; payout: number; net: number };
   highlights: GameHighlight[];
 }
 
@@ -153,6 +156,8 @@ export interface GameSession {
   finishedAt?: number;
   highlights?: GameHighlight[];
   playedBy?: string[];
+  // Per-player stake, already deducted from the host when the game started.
+  wager?: number;
 }
 
 export interface QueueEntry {

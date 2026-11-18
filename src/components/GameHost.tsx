@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MessageCircle, Music, Music2, RefreshCw, Sparkles, Trophy, Volume2, VolumeX, X } from "lucide-react";
+import { Heart, MessageCircle, Music, Music2, RefreshCw, Sparkles, Trophy, Volume2, VolumeX, X } from "lucide-react";
 import { SkinPicker, skinKindOf } from "./GamePage";
 import Sheet from "./Sheet";
 import { isMusicOn, onMusicChange, setMusicOn, startMusic, stopMusic } from "../games/music";
@@ -203,6 +203,11 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
               : current === me.id ? "Your turn" : `${names[current ?? ""] ?? "Opponent"} is playing`}
           </p>
         </div>
+        {session.wager ? (
+          <span className="game-pot" title="Hearts pot">
+            <Heart size={12} fill="currentColor" /> {session.wager * session.players.length}
+          </span>
+        ) : null}
         {finished && !resultOpen && (
           <button type="button" className="round-btn" onClick={() => setResultOpen(true)} aria-label="Show result"><Trophy size={18} /></button>
         )}
@@ -288,6 +293,15 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
                 {reward.levelUp > 0 && <span className="reward-level">Level {reward.levelUp}!</span>}
                 {reward.dare && <span className="dare-badge">Daily challenge complete · {reward.dare.streak}-day streak</span>}
                 {reward.couple && <span className="reward-couple">+{reward.couple.xp} Couple XP</span>}
+                {reward.wager && (
+                  <span className={`reward-bet ${reward.wager.net > 0 ? "is-win" : reward.wager.net < 0 ? "is-loss" : ""}`}>
+                    {reward.wager.net > 0
+                      ? `+${reward.wager.net} ❤ pot (${reward.wager.pot})`
+                      : reward.wager.net < 0
+                        ? `${reward.wager.net} ❤ bet`
+                        : `${reward.wager.stake} ❤ bet refunded`}
+                  </span>
+                )}
               </span>
             )}
             {highlights.length > 0 && <details className="match-highlights">
@@ -295,7 +309,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
               <ol>{highlights.map((h) => <li key={h.rev}>{highlightText(h.log, names)}</li>)}</ol>
               <button type="button" className="text-link" onClick={() => void shareHighlights()}>Share highlights</button>
             </details>}
-            <button type="button" className="primary-btn" onClick={() => playGame(def.id, opponents, session.convId.startsWith("dm:") ? session.convId : undefined)}>
+            <button type="button" className="primary-btn" onClick={() => playGame(def.id, opponents, session.convId.startsWith("dm:") ? session.convId : undefined, session.wager ?? 0)}>
               <RefreshCw size={16} /> Rematch
             </button>
             <button type="button" className="text-link" onClick={() => setResultOpen(false)}>View final board</button>

@@ -760,8 +760,18 @@ export const api = {
 
   // ---------- games ----------
 
-  createGame(game: string, players: string[], host: string, state: unknown, convId?: string) {
+  createGame(game: string, players: string[], host: string, state: unknown, convId?: string, wager = 0) {
     return mutate((db) => {
+      const stake = Math.max(0, Math.floor(wager));
+      if (stake > 0) {
+        if (!players.every((id) => id === host || id.startsWith("ai:") || db.users[id]?.isBot)) {
+          throw new Error("Heart bets are only for games against bots");
+        }
+        const player = db.users[host];
+        if (!player) throw new Error("Player not found");
+        if (player.hearts < stake) throw new Error(`You need ${stake - player.hearts} more hearts to bet`);
+        player.hearts -= stake;
+      }
       const id = uid();
       const session: GameSession = {
         id,
@@ -775,6 +785,7 @@ export const api = {
         rev: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        ...(stake > 0 ? { wager: stake } : {}),
       };
       db.games.push(session);
       if (!REMOTE) db.games = db.games.filter((g) => g.status !== "finished" || Date.now() - g.updatedAt < 86_400_000);

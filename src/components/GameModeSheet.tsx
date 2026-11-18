@@ -18,12 +18,15 @@ export default function GameModeSheet({ gameId, onClose, onFindStrangers, embedd
   const { db, me, playGame, nameOf } = useApp();
   const def = gameById(gameId);
   const [bots, setBots] = useState(1);
+  const [wager, setWager] = useState(0);
   const [step, setStep] = useState<"mode" | "friend">("mode");
   if (!def) return null;
   const friends = friendIds(db, me.id);
+  const seats = def.fillTo ?? bots + 1;
+  const pot = wager * seats;
 
   const solo = () => {
-    playGame(def.id, def.soloOnly ? [] : Array.from({ length: bots }, (_, i) => `ai:${i + 1}`));
+    playGame(def.id, def.soloOnly ? [] : Array.from({ length: bots }, (_, i) => `ai:${i + 1}`), undefined, wager);
     onClose();
   };
 
@@ -48,6 +51,30 @@ export default function GameModeSheet({ gameId, onClose, onFindStrangers, embedd
             </span>
             <button type="button" className="mode-go" onClick={solo}>Play</button>
           </div>
+          {!def.soloOnly && (
+            <div className="wager-pick" role="group" aria-label="Heart bet">
+              <span className="wager-title">
+                Bet hearts <small>optional</small>
+              </span>
+              <div className="wager-choices">
+                {[0, 10, 25, 50].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={wager === value ? "is-active" : ""}
+                    aria-pressed={wager === value}
+                    disabled={value > me.hearts}
+                    onClick={() => setWager(value)}
+                  >
+                    {value === 0 ? "Fun" : `${value} ❤`}
+                  </button>
+                ))}
+              </div>
+              <small className="wager-note">
+                {wager > 0 ? `Winner takes the ${pot} ❤ pot · you have ${me.hearts} ❤` : `You have ${me.hearts} ❤`}
+              </small>
+            </div>
+          )}
           {!def.soloOnly && (
             <>
               <button type="button" className="mode-option" onClick={() => setStep("friend")}>

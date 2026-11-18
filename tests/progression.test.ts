@@ -376,3 +376,34 @@ test("recent couple history is bounded but the permanent dedupe ledger is not ev
   assert.equal(coupleRank(200).level, 2);
   assert.equal(coupleRank(100000).next, null);
 });
+
+test("heart bet returns the pot on a win, refunds a draw and keeps a loss", () => {
+  const bet = (winner: string, wager = 10) => game(`bet-${winner}`, {
+    game: "cards", players: ["a", "ai:1", "ai:2"], winner, wager,
+    state: { players: ["a", "ai:1", "ai:2"], log: "a|bet" },
+  });
+  const win = fixture([bet("a")]);
+  const winReceipt = claim(win, "bet-a");
+  assert.deepEqual(winReceipt.wager, { stake: 10, pot: 30, payout: 30, net: 20 });
+  assert.equal(win.users.a.hearts, 120 + winReceipt.hearts + 30);
+
+  const loss = fixture([bet("ai:1")]);
+  const lossReceipt = claim(loss, "bet-ai:1");
+  assert.deepEqual(lossReceipt.wager, { stake: 10, pot: 30, payout: 0, net: -10 });
+  assert.equal(loss.users.a.hearts, 120 + lossReceipt.hearts);
+
+  const draw = fixture([bet("draw")]);
+  const drawReceipt = claim(draw, "bet-draw");
+  assert.deepEqual(drawReceipt.wager, { stake: 10, pot: 30, payout: 10, net: 0 });
+  assert.equal(draw.users.a.hearts, 120 + drawReceipt.hearts + 10);
+});
+
+test("heart bets never pay out in human games or without a stake", () => {
+  const human = fixture([game("human-bet", { game: "cards", winner: "a", wager: 25 })]);
+  const receipt = claim(human, "human-bet");
+  assert.equal(receipt.wager, undefined);
+  assert.equal(human.users.a.hearts, 120 + receipt.hearts);
+
+  const free = fixture([game("free", { game: "cards", winner: "a" })]);
+  assert.equal(claim(free, "free").wager, undefined);
+});

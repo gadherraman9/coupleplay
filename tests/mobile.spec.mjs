@@ -413,6 +413,90 @@ for (const size of [{width:360,height:640}, {width:1280,height:800}, {width:844,
   });
 }
 
+for (const size of [{width:390,height:700}, {width:360,height:640}]) {
+  test(`Color Cards table, recorded play and heart pot ${size.width}x${size.height}`, async ({page}, testInfo) => {
+    test.setTimeout(60000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize(size);
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await observeCardAudio(page);
+    await signIn(page);
+    await expect.poll(() => page.evaluate(() => window.cardAudio.decoded)).toBe(5);
+    const hearts = () => page.evaluate(async () => {
+      const url = performance.getEntriesByType('resource').map(e => e.name).find(u => u.includes('/src/backend/store.ts'));
+      const {getDB,getSessionId} = await import(url);
+      return getDB().users[getSessionId()].hearts;
+    });
+    const before = await hearts();
+    await page.locator('button.game-card--cards').first().click();
+    await page.locator('.bot-count button').last().click();
+    const bet = page.getByRole('group',{name:'Heart bet'});
+    await bet.getByRole('button',{name:'10 ❤'}).click();
+    await expect(bet.locator('.wager-note')).toContainText('Winner takes the 40 ❤ pot');
+    await page.locator('.mode-go').click();
+    await page.locator('.game-host').waitFor();
+    if (await page.locator('.clip-splash').count()) await page.locator('.clip-splash').click();
+    await expect(page.locator('.uno-hud')).toContainText('COLOR CARDS');
+    await expect(page.locator('.uno-seat')).toHaveCount(3);
+    await expect(page.locator('.my-hand .hand-card')).toHaveCount(7);
+    await expect(page.locator('.game-pot')).toContainText('40');
+    await expect.poll(hearts).toBe(before - 10);
+    await expect(page.locator('.fly-card')).toHaveCount(0);
+    const layout = await page.locator('.cards-game').evaluate(root => {
+      const box = node => {const r=node.getBoundingClientRect(); return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+      return {body:box(root.parentElement), dock:box(root.querySelector('.uno-dock')), hand:box(root.querySelector('.uno-hand-scroll')),
+        cards:[...root.querySelectorAll('.my-hand .hand-card')].map(box),
+        overflow:root.parentElement.scrollHeight-root.parentElement.clientHeight,
+        side:root.parentElement.scrollWidth-root.parentElement.clientWidth};
+    });
+    expect(layout.overflow).toBeLessThanOrEqual(2);
+    expect(layout.side).toBeLessThanOrEqual(2);
+    expect(layout.body.bottom-layout.dock.bottom).toBeLessThan(20);
+    for (const card of layout.cards) {
+      expect(card.left).toBeGreaterThanOrEqual(layout.hand.left-1);
+      expect(card.right).toBeLessThanOrEqual(layout.hand.right+1);
+      expect(card.width).toBeGreaterThanOrEqual(44);
+    }
+    await page.screenshot({path:testInfo.outputPath(`cards-table-${size.width}.png`)});
+    // A random deal can leave no legal card in hand; line the table color up with one.
+    const chosen = await page.evaluate(async () => {
+      const url = performance.getEntriesByType('resource').map(e => e.name).find(u => u.includes('/src/backend/store.ts'));
+      const {api,getDB,getSessionId} = await import(url);
+      const id = getSessionId();
+      const g = getDB().games.at(-1);
+      const card = g.state.hands[id].find(c => c.color !== 'wild');
+      api.updateGame(g.id, s=>{s.state.color=card.color;s.state.turn=s.state.players.indexOf(id);s.state.drew=false;s.state.drawnCard=null;});
+      return card.id;
+    });
+    await expect(page.locator(`.my-hand .hand-card.is-playable[data-fly-card="${chosen}"]`)).toBeVisible();
+    await page.evaluate(() => {window.cardAudio.starts = [];});
+    await page.locator(`.my-hand .hand-card[data-fly-card="${chosen}"]`).click();
+    await expect(page.locator('.my-hand .hand-card')).toHaveCount(6);
+    await expect.poll(() => page.evaluate(() => window.cardAudio.starts.length), {intervals:[20]}).toBe(2);
+    const sounds = await page.evaluate(() => window.cardAudio.starts);
+    expect(sounds.every(sound => sound.recorded)).toBe(true);
+    expect(sounds[1].at-sounds[0].at).toBeCloseTo(0.3, 2);
+    await page.evaluate(async () => {
+      const url = performance.getEntriesByType('resource').map(e => e.name).find(u => u.includes('/src/backend/store.ts'));
+      const {api,getDB,getSessionId} = await import(url);
+      const g = getDB().games.at(-1);
+      api.updateGame(g.id, s=>{s.winner=getSessionId();s.status='finished';});
+    });
+    await expect(page.getByText('YOU WON!',{exact:true})).toBeVisible();
+    await expect(page.locator('.reward-bet')).toHaveText('+30 ❤ pot (40)');
+    await expect.poll(() => page.evaluate(async () => {
+      const url = performance.getEntriesByType('resource').map(e => e.name).find(u => u.includes('/src/backend/store.ts'));
+      const {getDB,getSessionId} = await import(url);
+      const id = getSessionId();
+      const receipt = getDB().users[id].gameReceipts?.[getDB().games.at(-1).id];
+      return receipt?.wager ?? null;
+    })).toEqual({stake:10,pot:40,payout:40,net:30});
+    expect(await hearts()).toBeGreaterThanOrEqual(before-10+40);
+    expect(errors).toEqual([]);
+  });
+}
+
 test('recorded card sounds respect mute and unavailable assets do not synthesize replacements',async ({page,context}) => {
   await observeCardAudio(page);
   await signIn(page);

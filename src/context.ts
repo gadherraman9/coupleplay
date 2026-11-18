@@ -7,7 +7,7 @@ export interface AppCtx {
   notify: (message: string) => void;
   openChat: (convId: string) => void;
   openGame: (sessionId: string) => void;
-  playGame: (gameId: string, opponents: string[], convId?: string) => void;
+  playGame: (gameId: string, opponents: string[], convId?: string, wager?: number) => void;
   nameOf: (id: string) => string;
 }
 

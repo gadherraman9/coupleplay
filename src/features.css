@@ -701,6 +701,63 @@
   color: #fff;
 }
 
+.wager-pick {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 14px;
+  border: 1px dashed #e3c9e5;
+  border-radius: 16px;
+  background: #fff7fb;
+  color: #4a2a4e;
+}
+
+.wager-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.wager-title small {
+  font-size: 10px;
+  font-weight: 600;
+  color: #906b94;
+  margin-left: 3px;
+}
+
+.wager-choices {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.wager-choices button {
+  min-height: 36px;
+  padding: 6px 11px;
+  border: 1px solid #e5c9e7;
+  border-radius: 999px;
+  background: #fff;
+  color: #5d3a63;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.wager-choices button.is-active {
+  background: linear-gradient(135deg, #ec4899, #a855f7);
+  border-color: #db2777;
+  color: #fff;
+}
+
+.wager-choices button:disabled {
+  opacity: 0.4;
+}
+
+.wager-note {
+  flex: 1 0 100%;
+  font-size: 11px;
+  color: #7b587f;
+}
+
 .friend-row--button {
   width: 100%;
   border: none;

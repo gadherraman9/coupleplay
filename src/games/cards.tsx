@@ -4,8 +4,7 @@ import type { GameDef, GameViewProps } from "./types";
 import { shuffle } from "./types";
 import { useCardFlights } from "./cardFly";
 import { CardBack } from "./deck";
-import { play } from "./sfx";
-import { LogLine, useOnChange } from "./ui";
+import { LogLine } from "./ui";
 import { useSkin } from "../skins";
 import { backStyle, useTableSound } from "./deck";
 
@@ -110,10 +109,16 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
   const current = state.players[state.turn];
   const myTurn = current === me && !finished;
   const hand = state.hands[me] ?? [];
-  const totalCards = state.players.reduce((n, p) => n + state.hands[p].length, 0);
-  useOnChange(state.discard.length, (prev, next) => next > prev && play("card"));
-  useOnChange(totalCards, (prev, next) => next > prev && play("draw"));
-  useOnChange(state.color, () => state.discard[state.discard.length - 1]?.color === "wild" && play("coin"));
+  const opponents = state.players.filter((player) => player !== me);
+  // One opponent sits at the top, two on the sides, three around the top half.
+  const slots = ["top", "left", "right"] as const;
+  const slotFor = (index: number) => (opponents.length === 1 ? "top" : opponents.length === 2 ? (index === 0 ? "left" : "right") : slots[index]);
+  const cardName = (card: Card) => `${card.color === "wild" ? "Wild" : card.color} ${LABEL[card.value] ?? card.value}`;
+  const turnText = finished
+    ? "Game over"
+    : myTurn
+      ? state.drew ? "Card drawn — play it or pass" : "Your turn — play a card or draw"
+      : `${names[current]} is thinking…`;
 
   const flyRoot = useRef<HTMLDivElement>(null);
   const flyLayer = useCardFlights({ root: flyRoot, me, snapshot: { hands: state.hands, pile: state.discard, round: 0 }, renderFace: (card) => <CardFace card={card} />, renderBack: () => <CardBack /> });
@@ -121,38 +126,65 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
   return (
     <div className="board-game cards-game" ref={flyRoot}>
       {flyLayer}
-      <div className="opponents">
-        {state.players.filter((p) => p !== me).map((player) => (
-          <span key={player} className={`opponent ${player === current ? "is-turn" : ""}`} data-fly-seat={player}>
-            <span className="opponent-fan">
-              {Array.from({ length: Math.min(state.hands[player].length, 7) }, (_, i) => (
-                <span key={i} className="card-back" style={backLook} />
-              ))}
-            </span>
-            <strong>{names[player]}</strong>
-            <small>{state.hands[player].length === 1 ? "LAST CARD!" : `${state.hands[player].length} cards`}</small>
+      <div className="uno-hud">
+        <span className="uno-hud-title">
+          <small>COLOR CARDS</small>
+          <b>{state.deck.length} in deck</b>
+        </span>
+        <span className="uno-color-badge" style={{ ["--c" as string]: HEX[state.color] }}>
+          <i aria-hidden="true" /> {state.color}
+        </span>
+        <span className="uno-dir" aria-label={state.direction === 1 ? "Clockwise" : "Counter-clockwise"}>
+          {state.direction === 1 ? "↻" : "↺"}
+        </span>
+      </div>
+
+      <div className="uno-table">
+        <span className="uno-table-mark" aria-hidden="true">
+          <b>COLOR</b>
+          <span>CARDS</span>
+        </span>
+        {opponents.map((player, index) => {
+          const count = state.hands[player].length;
+          return (
+            <div key={player} className={`uno-seat uno-seat--${slotFor(index)} ${player === current ? "is-turn" : ""}`} data-fly-seat={player}>
+              <span className="uno-fan" aria-hidden="true">
+                {Array.from({ length: Math.min(count, 3) }, (_, i) => <span key={i} className="card-back" style={backLook} />)}
+              </span>
+              <span className="uno-avatar" aria-hidden="true">
+                {(names[player] ?? "?").slice(0, 1).toUpperCase()}
+                <i>{count}</i>
+              </span>
+              <span className="uno-seat-name">
+                <b>{names[player]}</b>
+                <small>{count === 1 ? "Last card!" : `${count} cards`}</small>
+              </span>
+            </div>
+          );
+        })}
+
+        <div className="uno-center">
+          <button
+            type="button"
+            className="card-back card-back--deck"
+            data-fly-deck
+            style={backLook}
+            disabled={!myTurn || state.drew}
+            onClick={() => act({ type: "draw" })}
+            aria-label="Draw a card"
+          >
+            <span>{myTurn && !state.drew ? "Draw" : "Deck"}</span>
+          </button>
+          <span className="discard-pile" data-fly-pile-spot>
+            <span className="uno-color-ring" style={{ borderColor: HEX[state.color] }} aria-hidden="true" />
+            {state.discard.slice(-3).map((card, i, pile) => (
+              <span key={card.id} data-fly-pile={card.id} className={`discard-card ${i === pile.length - 1 ? "is-top" : ""}`} style={{ transform: `rotate(${tilt(card.id)}deg)` }}>
+                <CardFace card={card} />
+              </span>
+            ))}
           </span>
-        ))}
+        </div>
       </div>
-
-      <div className="table-center">
-        <button type="button" className="card-back card-back--deck" style={backLook} disabled={!myTurn || state.drew} onClick={() => act({ type: "draw" })} aria-label="Draw a card">
-          <span>Draw</span>
-        </button>
-        <span className="discard-pile" data-fly-pile-spot>
-          {state.discard.slice(-3).map((card, i, pile) => (
-            <span key={card.id} data-fly-pile={card.id} className={`discard-card ${i === pile.length - 1 ? "is-top" : ""}`} style={{ transform: `rotate(${tilt(card.id)}deg)` }}>
-              <CardFace card={card} />
-            </span>
-          ))}
-        </span>
-        <span className="table-info">
-          <span key={state.color} className="current-color" style={{ background: HEX[state.color] }} title={`Color: ${state.color}`} />
-          <span key={state.direction} className="direction">{state.direction === 1 ? "↻" : "↺"}</span>
-        </span>
-      </div>
-
-      <LogLine log={state.log} names={names} />
 
       {choosing !== null && (
         <div className="color-picker" role="dialog" aria-label="Pick a color">
@@ -171,33 +203,41 @@ function CardsView({ state, me, names, act, finished }: GameViewProps<State, Act
         </div>
       )}
 
-      <div className="my-hand">
-        {hand.map((card, i) => {
-          const ok = myTurn && playable(state, card);
-          return (
-            <button
-              key={card.id}
-              type="button"
-              className={`hand-card ${ok ? "is-playable" : ""}`}
-              data-fly-card={card.id}
-              style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
-              disabled={!ok}
-              onClick={() => (card.color === "wild" ? setChoosing(card.id) : act({ type: "play", card: card.id }))}
-            >
-              <CardFace card={card} small />
+      <div className={`uno-dock ${myTurn ? "is-turn" : ""}`}>
+        <div className="uno-dock-meta">
+          <span>
+            <b>You</b> · {hand.length} {hand.length === 1 ? "card" : "cards"}
+          </span>
+          {myTurn && state.drew ? (
+            <button type="button" className="ghost-btn uno-pass" onClick={() => act({ type: "pass" })}>
+              Pass
             </button>
-          );
-        })}
-      </div>
-
-      <div className="board-actions">
-        {myTurn && state.drew ? (
-          <button type="button" className="ghost-btn" onClick={() => act({ type: "pass" })}>
-            Pass turn
-          </button>
-        ) : (
-          <p className="turn-label">{finished ? "Game over" : myTurn ? "Your turn — play a card or draw" : `${names[current]} is thinking…`}</p>
-        )}
+          ) : (
+            <p className="turn-label" role="status">{turnText}</p>
+          )}
+        </div>
+        <div className="uno-hand-scroll">
+          <div className="my-hand" data-fly-hand>
+            {hand.map((card, i) => {
+              const ok = myTurn && playable(state, card);
+              return (
+                <button
+                  key={card.id}
+                  type="button"
+                  className={`hand-card ${ok ? "is-playable" : ""}`}
+                  data-fly-card={card.id}
+                  style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+                  disabled={!ok}
+                  aria-label={`Play ${cardName(card)}`}
+                  onClick={() => (card.color === "wild" ? setChoosing(card.id) : act({ type: "play", card: card.id }))}
+                >
+                  <CardFace card={card} small />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <LogLine log={state.log} names={names} />
       </div>
     </div>
   );

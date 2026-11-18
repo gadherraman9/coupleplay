@@ -96,6 +96,18 @@ export function recordGameProgress(
   const outcome = solo ? "completed" : winner === "draw" ? "draw" : winner === me ? "win" : winner ? "loss" : "completed";
   const won = outcome === "win";
   const drew = outcome === "draw";
+  // A bet only pays out in bot games: the stake was debited from the host at
+  // start, so winning returns the whole pot, a draw refunds, a loss keeps it.
+  const stake = Math.max(0, Math.floor(session.wager ?? 0));
+  const botsOnly = session.players.every((id) => id === me || id.startsWith("ai:") || db.users[id]?.isBot);
+  const wager = stake > 0 && !solo && botsOnly
+    ? {
+      stake,
+      pot: stake * session.players.length,
+      payout: won ? stake * session.players.length : drew ? stake : 0,
+      net: won ? stake * (session.players.length - 1) : drew ? 0 : -stake,
+    }
+    : undefined;
   // Solo/no-result completions neither manufacture nor break a win streak.
   const streak = won ? (user.winStreak ?? 0) + 1 : outcome === "completed" ? user.winStreak ?? 0 : 0;
   const stats = user.gameStats?.[session.game] ?? { played: 0, won: 0 };
@@ -124,7 +136,7 @@ export function recordGameProgress(
     winner, outcome, completedAt, recordedAt: at, day, hearts, xp,
     completionHearts: COMPLETION_HEARTS, winHearts: won ? WIN_HEARTS : 0,
     bonus, streak, levelUp: afterLevel > beforeLevel ? afterLevel : 0, levelReward,
-    dare, couple, highlights: boundedHighlights(session.highlights),
+    dare, couple, wager, highlights: boundedHighlights(session.highlights),
   };
   const missions = { ...missionState(user, at) };
   if (day === missions.day) {
@@ -136,7 +148,7 @@ export function recordGameProgress(
   return {
     receipt,
     user: {
-      ...user, hearts: user.hearts + hearts, xp: totalXP,
+      ...user, hearts: user.hearts + hearts + (wager?.payout ?? 0), xp: totalXP,
       wins: (user.wins ?? 0) + Number(won), draws: (user.draws ?? 0) + Number(drew),
       winStreak: streak, bestWinStreak: Math.max(user.bestWinStreak ?? 0, user.winStreak ?? 0, streak),
       missions,

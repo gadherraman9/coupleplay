@@ -118,7 +118,7 @@ export default function App() {
   );
 
   const playGame = useCallback(
-    (gameId: string, opponents: string[], convId?: string) => {
+    (gameId: string, opponents: string[], convId?: string, wager = 0) => {
       const def = gameById(gameId);
       if (!def || !me) return;
       if (def.soloOnly) {
@@ -134,7 +134,7 @@ export default function App() {
         if (!players.includes(`ai:${n}`)) players.push(`ai:${n}`);
       }
       attempt(notify, () => {
-        const session = api.createGame(gameId, players, me.id, def.init(players, me), convId);
+        const session = api.createGame(gameId, players, me.id, def.init(players, me), convId, wager);
         if (convId?.startsWith("dm:")) {
           api.sendMessage(me.id, convId, { kind: "invite", invite: { game: gameId, sessionId: session.id, title: def.title } });
         }

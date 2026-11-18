@@ -345,6 +345,134 @@
   .game-host .cb-bids > div { grid-template-columns: repeat(8, 1fr); }
   .game-host .cb-bids > span, .game-host .cb-bids > small:last-child { display: none; }
 }
+/* ---------- Color Cards ---------- */
+
+.game-host .game-body--board > .cards-game {
+  max-width: 1040px;
+  flex: none;
+  height: 100%;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.uno-hud { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px; padding: 0 10px; color: #f6edff; }
+.uno-hud-title { display: flex; align-items: baseline; gap: 8px; }
+.uno-hud-title small { font-size: 9px; font-weight: 800; letter-spacing: 1.7px; color: #e2d3f3; }
+.uno-hud-title b { font-size: 12px; font-weight: 700; color: #fff; }
+.uno-color-badge { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px 5px 7px; border-radius: 999px; background: #180b28c4; box-shadow: 0 2px 8px #0003; font-size: 11px; font-weight: 800; text-transform: capitalize; }
+.uno-color-badge i { width: 16px; height: 16px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px #ffffff3d, 0 0 12px -1px var(--c); }
+.uno-dir { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #180b28c4; font-size: 18px; color: #e9dcf7; }
+
+.game-host .uno-table { position: relative; flex: 1 1 0; min-height: 220px; isolation: isolate; }
+.uno-table::before { content: ""; position: absolute; inset: 30px 54px 14px; z-index: -1; border: 7px solid #ffffff1f; border-radius: 46%; background: radial-gradient(ellipse, #ffffff0d, #120b2259); box-shadow: inset 0 0 0 1px #ffffff17, inset 0 0 60px #0003, 0 10px 26px #0002; }
+.uno-table-mark { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #fff; opacity: .16; pointer-events: none; }
+.uno-table-mark b { font-size: 46px; line-height: 1; letter-spacing: 2px; }
+.uno-table-mark span { font-size: 11px; letter-spacing: 6px; }
+
+.game-host .uno-seat { position: absolute; display: flex; align-items: center; gap: 8px; padding: 6px 11px 6px 6px; border: 1px solid #ffffff1f; border-radius: 15px; background: #180b28d9; color: #f3e9ff; box-shadow: 0 5px 14px #0003; z-index: 3; }
+.uno-seat--top { top: 0; left: 50%; transform: translateX(-50%); }
+.uno-seat--left { left: 0; top: 52%; transform: translateY(-50%); }
+.uno-seat--right { right: 0; top: 52%; transform: translateY(-50%); }
+.uno-seat.is-turn { border-color: #f0abfc; background: #2b0f3fe8; box-shadow: 0 0 0 2px #f0abfc33, 0 6px 16px #0004; }
+.uno-avatar { position: relative; display: grid; place-items: center; width: 42px; height: 42px; flex: none; border-radius: 50%; background: linear-gradient(145deg, #7c3aed, #4c1d95); color: #fbe9ff; font-size: 18px; font-weight: 800; box-shadow: inset 0 -2px 0 #0003; }
+.uno-seat--left .uno-avatar { background: linear-gradient(145deg, #0891b2, #164e63); }
+.uno-seat--right .uno-avatar { background: linear-gradient(145deg, #db2777, #831843); }
+.uno-avatar i { position: absolute; right: -7px; bottom: -4px; display: grid; place-items: center; min-width: 22px; height: 19px; padding: 0 4px; border: 2px solid #180b28; border-radius: 7px; background: #f5ead1; color: #2a1633; font-size: 10px; font-style: normal; }
+.uno-seat-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.uno-seat-name b { max-width: 108px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.uno-seat-name small { font-size: 10px; color: #c7b4dc; }
+.uno-fan { position: absolute; top: -17px; right: -9px; display: flex; transform: rotate(-14deg); z-index: -1; }
+.uno-fan .card-back { width: 21px; height: 31px; border-radius: 3px; margin-left: -15px; box-shadow: 0 2px 5px #0004; }
+.uno-fan .card-back:first-child { margin-left: 0; }
+
+.game-host .uno-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 26px; z-index: 2; }
+.game-host .uno-center .card-back--deck { width: 86px; height: 126px; }
+.game-host .uno-center .discard-pile { width: 86px; height: 126px; }
+.game-host .uno-center .uno-card { width: 86px; height: 126px; }
+.game-host .uno-center .uno-card-oval { font-size: 34px; }
+.card-back--deck span { font-weight: 800; letter-spacing: .5px; }
+.uno-color-ring { position: absolute; inset: -8px; border: 3px solid; border-radius: 16px; box-shadow: 0 0 22px -4px #0006; pointer-events: none; transition: border-color .3s ease; }
+.discard-card { z-index: 1; }
+
+.uno-dock { position: relative; flex: none; width: 100%; padding: 8px 14px 6px; border: 1px solid #ffffff1c; border-radius: 20px; background: linear-gradient(180deg, #1c0d2de8, #120820e8); box-shadow: 0 -8px 30px #0a041940; }
+.uno-dock.is-turn { border-color: #f0abfc59; }
+.uno-dock-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; color: #d6c4e9; font-size: 12px; }
+.uno-dock-meta > span b { color: #fff; }
+.game-host .uno-dock .turn-label { margin: 0; min-height: 0; font-size: 12px; color: #d9c8ec; text-shadow: none; }
+.game-host .uno-dock.is-turn .turn-label { color: #f6dbff; }
+.uno-pass { min-height: 32px; padding: 4px 16px; font-size: 12px; }
+.uno-hand-scroll { overflow-x: auto; overflow-y: hidden; padding: 14px 2px 4px; }
+.game-host .uno-dock .my-hand { display: flex; width: max-content; min-width: 100%; justify-content: center; align-items: flex-end; gap: 0; padding: 0; }
+.game-host .uno-dock .hand-card { flex: 0 0 auto; margin: 0 0 0 -15px; padding: 0; opacity: 1; filter: none; animation: none; transition: transform .15s ease, filter .2s ease; }
+.game-host .uno-dock .hand-card:first-child { margin-left: 0; }
+.game-host .uno-dock .hand-card:disabled { opacity: 1; filter: brightness(.7) saturate(.75); }
+.game-host .uno-dock .hand-card.is-playable { transform: translateY(-6px); }
+.game-host .uno-dock .hand-card.is-playable:hover, .game-host .uno-dock .hand-card.is-playable:focus-visible { transform: translateY(-14px) scale(1.04); z-index: 2; }
+.cards-game .uno-card--small { width: 70px; height: 102px; }
+.cards-game .uno-card--small .uno-card-oval { font-size: 24px; }
+.game-host .uno-dock .game-log-stack { margin-top: 2px; }
+.game-host .uno-dock .game-log { font-size: 10px; color: #c0aed6; text-shadow: none; }
+.game-host .uno-dock .game-log--old { display: none; }
+
+.game-pot { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 5px 10px; border-radius: 999px; background: #fce7f3; color: #be185d; font-size: 12px; font-weight: 800; }
+.reward-bet { padding: 6px 10px; border-radius: 12px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; }
+.reward-bet.is-win { background: #dcfce7; color: #166534; }
+.reward-bet.is-loss { background: #fee2e2; color: #991b1b; }
+
+@media (min-width: 1000px) {
+  .game-host .uno-center .card-back--deck, .game-host .uno-center .discard-pile, .game-host .uno-center .uno-card { width: 96px; height: 140px; }
+  .cards-game .uno-card--small { width: 78px; height: 113px; }
+}
+
+@media (max-width: 699px) {
+  .game-host .game-body--board > .cards-game { gap: 6px; }
+  .uno-hud { min-height: 34px; padding: 0 4px; }
+  .uno-hud-title small { font-size: 8px; letter-spacing: 1.1px; }
+  .uno-dir { width: 30px; height: 30px; font-size: 16px; }
+  .game-host .uno-table { min-height: 190px; }
+  .uno-table::before { inset: 24px 22px 8px; border-width: 5px; }
+  .uno-table-mark b { font-size: 34px; }
+  .uno-table-mark span { font-size: 9px; letter-spacing: 4px; }
+  .game-host .uno-seat { gap: 6px; padding: 4px 8px 4px 4px; border-radius: 13px; }
+  .game-host .uno-seat--left, .game-host .uno-seat--right { top: 50%; }
+  .uno-avatar { width: 33px; height: 33px; font-size: 15px; }
+  .uno-avatar i { min-width: 19px; height: 17px; font-size: 9px; right: -5px; }
+  .uno-seat-name b { max-width: 74px; font-size: 11px; }
+  .uno-seat-name small { font-size: 9px; }
+  .uno-fan { top: -13px; right: -7px; }
+  .uno-fan .card-back { width: 16px; height: 24px; margin-left: -12px; }
+  .game-host .uno-center { gap: 18px; }
+  .game-host .uno-center .card-back--deck, .game-host .uno-center .discard-pile, .game-host .uno-center .uno-card { width: 62px; height: 91px; }
+  .game-host .uno-center .uno-card-oval { font-size: 25px; }
+  .uno-color-ring { inset: -6px; border-width: 2px; border-radius: 12px; }
+  .uno-dock { padding: 6px 8px 4px; border-radius: 15px; }
+  .uno-dock-meta { font-size: 11px; min-height: 22px; gap: 6px; }
+  .game-host .uno-dock .turn-label { font-size: 10px; }
+  .uno-hand-scroll { padding: 12px 0 2px; }
+  .game-host .uno-dock .hand-card { margin-left: -13px; }
+  .cards-game .uno-card--small { width: 52px; height: 76px; }
+  .cards-game .uno-card--small .uno-card-oval { font-size: 18px; }
+  .cards-game .uno-card--small small { font-size: 9px; }
+  .cards-game .uno-card--small small.uno-card-corner { display: none; }
+  .game-host .uno-dock .game-log { font-size: 9px; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .game-host .uno-hud { min-height: 28px; }
+  .game-host .uno-table { min-height: 130px; }
+  .uno-table-mark { display: none; }
+  .game-host .uno-seat { padding: 3px 8px 3px 3px; }
+  .uno-avatar { width: 28px; height: 28px; font-size: 13px; }
+  .uno-seat-name small { display: none; }
+  .uno-fan { display: none; }
+  .game-host .uno-center .card-back--deck, .game-host .uno-center .discard-pile, .game-host .uno-center .uno-card { width: 50px; height: 73px; }
+  .cards-game .uno-card--small { width: 42px; height: 61px; }
+  .cards-game .uno-card--small .uno-card-oval { font-size: 15px; }
+  .game-host .uno-dock .hand-card { margin-left: -10px; }
+  .uno-hand-scroll { padding: 8px 0 2px; }
+  .game-host .uno-dock .game-log-stack { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .game-host *, .game-host *::before, .game-host *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; }
 }
