@@ -1,4 +1,4 @@
-// Tiny synthesized sound kit (Web Audio), so games need no audio files.
+// Web Audio sound kit: recorded card handling, synthesized board/game effects.
 
 export type Sfx =
   | "tap"
@@ -68,7 +68,8 @@ function audio() {
 // Browsers only allow audio after a user gesture; unlock on the first one.
 if (typeof window !== "undefined") {
   const unlock = () => {
-    audio();
+    const ac = audio();
+    if (ac) void preloadCardSamples(ac);
     window.removeEventListener("pointerdown", unlock);
     window.removeEventListener("keydown", unlock);
   };
@@ -162,9 +163,93 @@ function noise(ac: AudioContext, { dur, vol = 0.3, at = 0, freq = 2000, to, atta
   track(src, filter, gain);
 }
 
-function paperSlide(ac: AudioContext, vol: number, dur: number, at = 0) {
-  noise(ac, { dur, vol, at, freq: 3800, to: 1100, q: 0.55, attack: 0.012 });
-  noise(ac, { dur: dur * 0.65, vol: vol * 0.3, at: at + 0.015, freq: 750, q: 0.5, type: "lowpass", attack: 0.008 });
+const CARD_SLIDES = ["card-slide-1", "card-slide-2"] as const;
+const CARD_PLACES = ["card-place-1", "card-place-2"] as const;
+const CARD_SAMPLES = [...CARD_SLIDES, ...CARD_PLACES, "card-shuffle"] as const;
+type CardSampleName = (typeof CARD_SAMPLES)[number];
+type CardEffect = "card" | "draw" | "deal" | "shuffle" | "fold";
+interface CardSample {
+  buffer: AudioBuffer;
+  offset: number;
+}
+const cardSamples = new Map<CardSampleName, CardSample>();
+let cardSampleLoad: Promise<void> | null = null;
+let slideVariant = 0;
+let placeVariant = 0;
+
+function preloadCardSamples(ac: AudioContext) {
+  // Five same-origin requests at most per page, including failures; never queue plays.
+  cardSampleLoad ??= Promise.all(CARD_SAMPLES.map(async (name) => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(`/media/audio/cards/${name}.ogg`, {
+        mode: "same-origin",
+        redirect: "error",
+        cache: "force-cache",
+        signal: controller.signal,
+      });
+      if (!response.ok) return;
+      const buffer = await ac.decodeAudioData(await response.arrayBuffer());
+      // Ignore silent pre-roll so the recorded landing starts at its scheduled time.
+      let firstFrame = buffer.length;
+      for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+        const data = buffer.getChannelData(channel);
+        for (let frame = 0; frame < firstFrame; frame += 1) {
+          if (Math.abs(data[frame]) >= 0.005) {
+            firstFrame = frame;
+            break;
+          }
+        }
+      }
+      const offset = firstFrame < buffer.length ? Math.max(0, firstFrame / buffer.sampleRate - 0.003) : 0;
+      cardSamples.set(name, { buffer, offset });
+    } catch {
+      // Missing/unsupported recordings stay silent, with no synthetic fallback.
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  })).then(() => {});
+  return cardSampleLoad;
+}
+
+function cardSample(ac: AudioContext, sample: CardSample, vol: number, maxDuration: number, at: number) {
+  const duration = Math.min(maxDuration, sample.buffer.duration - sample.offset);
+  if (duration <= 0) return;
+  const source = ac.createBufferSource();
+  const gain = ac.createGain();
+  source.buffer = sample.buffer;
+  // Keep the recording's native pitch; brief edge fades avoid truncation clicks.
+  gain.gain.setValueAtTime(0, at);
+  gain.gain.linearRampToValueAtTime(vol, at + Math.min(0.003, duration / 2));
+  gain.gain.setValueAtTime(vol, at + Math.max(duration - 0.012, duration / 2));
+  gain.gain.linearRampToValueAtTime(0, at + duration);
+  source.connect(gain).connect(master!);
+  track(source, gain);
+  source.start(at, sample.offset, duration);
+  source.stop(at + duration);
+}
+
+function playCardEffect(ac: AudioContext, name: CardEffect, volume: number) {
+  void preloadCardSamples(ac);
+  // Read only ready buffers: loading must never replay an old event after unmute.
+  const at = ac.currentTime;
+  if (name === "shuffle") {
+    const sample = cardSamples.get("card-shuffle");
+    // Keep the recorded riffle inside the 470 ms pre-deal pause.
+    if (sample) cardSample(ac, sample, volume * 0.5, 0.44, at);
+    return;
+  }
+  const slide = cardSamples.get(CARD_SLIDES[slideVariant]) ?? cardSamples.get(CARD_SLIDES[1 - slideVariant]);
+  const place = cardSamples.get(CARD_PLACES[placeVariant]) ?? cardSamples.get(CARD_PLACES[1 - placeVariant]);
+  if (!slide || (name === "card" && !place)) return;
+  slideVariant = (slideVariant + 1) % CARD_SLIDES.length;
+  cardSample(ac, slide, volume * 0.55, name === "card" ? 0.26 : name === "fold" ? 0.2 : 0.14, at);
+  if (name === "card" && place) {
+    placeVariant = (placeVariant + 1) % CARD_PLACES.length;
+    // Rustle, then a softer landing at 300 ms; finish within the 430 ms flight.
+    cardSample(ac, place, volume * 0.32, 0.13, at + 0.3);
+  }
 }
 
 function tableTap(ac: AudioContext, vol: number, at = 0) {
@@ -310,11 +395,11 @@ export function play(name: Sfx, volume = 1) {
       notes(ac, [784, 988, 1175, 1568], 0.07, { type: "sine", vol: v(0.22) });
       break;
     case "card":
-      paperSlide(ac, v(0.3), 0.32);
-      tableTap(ac, v(0.2), 0.35);
-      break;
     case "draw":
-      paperSlide(ac, v(0.23), 0.2);
+    case "deal":
+    case "shuffle":
+    case "fold":
+      playCardEffect(ac, name, v(1));
       break;
     case "place":
       tone(ac, { freq: 340, to: 220, dur: 0.1, type: "triangle", vol: v(0.3) });
@@ -374,22 +459,6 @@ export function play(name: Sfx, volume = 1) {
         noise(ac, { dur: 0.04, vol: v(0.45), freq: 4200 + Math.random() * 1500, q: 6, at: i * 0.045 + Math.random() * 0.015 });
         tone(ac, { freq: 2400 + Math.random() * 600, dur: 0.04, type: "sine", vol: v(0.08), at: i * 0.045 });
       }
-      break;
-    case "deal":
-      paperSlide(ac, v(0.26), 0.14);
-      tableTap(ac, v(0.13), 0.16);
-      break;
-    case "shuffle":
-      for (let i = 0; i < 16; i += 1) {
-        const at = i * 0.009 + i * i * 0.00055;
-        noise(ac, { dur: 0.025, vol: v(0.16 + (i % 3) * 0.025), at, freq: 2600 + (i % 4) * 650, q: 0.6, attack: 0.002 });
-      }
-      paperSlide(ac, v(0.22), 0.16, 0.27);
-      tableTap(ac, v(0.22), 0.39);
-      break;
-    case "fold":
-      noise(ac, { dur: 0.2, vol: v(0.2), freq: 1500, q: 0.5 });
-      tone(ac, { freq: 300, to: 180, dur: 0.15, type: "triangle", vol: v(0.1) });
       break;
     case "check":
       tableTap(ac, v(0.35));

@@ -1,9 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GameDef, GameViewProps } from "./types";
-import { CardBack, cardLabel, makeDeck, PlayingCard, seatOrder, sortHand, useTableSound } from "./deck";
+import { CardBack, cardLabel, makeDeck, PlayingCard, seatOrder, sortHand, SUIT_NAME, useTableSound } from "./deck";
 import type { PCard, Suit } from "./deck";
-import { play } from "./sfx";
-import { LogLine, useOnChange } from "./ui";
+import { LogLine } from "./ui";
 import { useCardFlights } from "./cardFly";
 
 // Call Break: 4 players, 13 cards each, spades are always trump.
@@ -150,9 +149,13 @@ function CallBreakView({ state, me, names, act, finished }: GameViewProps<State,
   const order = seatOrder([0, 1, 2, 3], Math.max(0, mySeat));
   const spotOf = (seat: number) => SPOT[order.indexOf(seat)];
   const isHost = state.players[0] === me;
-  useOnChange(state.played.length + state.trick.length, (prev, next) => next > prev && play("card"));
-  useOnChange(state.lastTrick?.winner, (_, w) => w !== undefined && play(w === mySeat ? "coin" : "draw", 0.7));
-  useOnChange(state.round, () => play("deal"));
+  const [scoresOpen, setScoresOpen] = useState(false);
+  const showScores = scoresOpen || state.phase === "roundEnd";
+  const turnText = finished ? "Game over" : state.phase === "roundEnd" ? "Next round coming…"
+    : myTurn ? state.phase === "bid" ? "Choose your bid" : state.trick.length
+      ? `Your turn · follow ${SUIT_NAME[state.trick[0].card.s as Suit].toLowerCase()} if you can`
+      : "Your turn · lead with any card"
+    : `${names[state.players[state.turn]]} is ${state.phase === "bid" ? "bidding" : "playing"}…`;
 
   useEffect(() => {
     if (state.phase !== "roundEnd" || finished) return;
@@ -177,122 +180,84 @@ function CallBreakView({ state, me, names, act, finished }: GameViewProps<State,
   return (
     <div className="board-game cb-game" ref={flyRoot}>
       {flyLayer}
+      <div className="cb-hud">
+        <span><small>ROUND</small><strong>{state.round} <i>/ {ROUNDS}</i></strong></span>
+        <span className="cb-trump-badge"><b>♠</b> Spades trump</span>
+        <button type="button" className="cb-score-toggle" aria-expanded={showScores} onClick={() => setScoresOpen(!scoresOpen)}>Scores</button>
+      </div>
       <div className="cb-table">
+        <div className="cb-table-mark" aria-hidden="true"><b>♠</b><span>CALL BREAK</span><small>Trick {Math.min(13, Math.floor(state.played.length / 4) + 1)} of 13</small></div>
         {[0, 1, 2, 3].filter((s) => s !== mySeat).map((seat) => (
           <div key={seat} className={`cb-seat cb-seat--${spotOf(seat)} ${state.turn === seat && !finished ? "is-turn" : ""}`} data-fly-seat={state.players[seat]}>
-            <span className="cb-fan">
-              {state.hands[seat].slice(0, 13).map((c) => (
-                <CardBack key={c.id} tiny />
-              ))}
-            </span>
+            <span className="cb-avatar" aria-hidden="true">{(names[state.players[seat]] ?? "?").slice(0, 1)}<i>{state.hands[seat].length}</i></span>
             <span className="cb-name">
               <b>{names[state.players[seat]]}</b>
-              <small>
-                {state.bids[seat] === null ? (state.phase === "bid" ? "bidding…" : "") : `${state.tricks[seat]}/${state.bids[seat]}`} · {total(state, seat)}
-              </small>
+              <small>{state.bids[seat] === null ? "Not bid yet" : <><strong>{state.tricks[seat]} / {state.bids[seat]}</strong> tricks</>}</small>
+              <em>Score {total(state, seat)}</em>
             </span>
+            <span className="cb-fan" aria-hidden="true">
+              {state.hands[seat].slice(0, 3).map((c) => <CardBack key={c.id} tiny />)}
+            </span>
+            {state.turn === seat && !finished && <span className="cb-seat-turn">{state.phase === "bid" ? "Bidding" : "Playing"}</span>}
           </div>
         ))}
-
-        <div className={`cb-trick ${collecting ? `is-collect is-collect--${collecting}` : ""}`} key={collecting ? `c${state.played.length}` : "live"}>
+        <div className={`cb-trick ${collecting ? `is-collect is-collect--${collecting}` : ""}`} data-fly-pile-spot key={collecting ? `c${state.played.length}` : "live"}>
           {center.map((p) => (
             <span key={p.card.id} className={`cb-played cb-played--${spotOf(p.seat)}`} data-fly-pile={p.card.id}>
               <PlayingCard card={p.card} small />
             </span>
           ))}
-          {state.phase === "bid" && <span className="cb-trump">♠ Spades are trump</span>}
         </div>
-      </div>
-
-      <div className={`cb-me ${myTurn ? "is-turn" : ""}`}>
-        <span className="cb-name cb-name--me">
-          <b>You</b>
-          <small>
-            {state.bids[mySeat] === null ? "Your call" : `Won ${state.tricks[mySeat]} of ${state.bids[mySeat]}`} · total {total(state, mySeat)}
-          </small>
-        </span>
-      </div>
-
-      <LogLine log={state.log} names={names} />
-
-      {state.phase === "bid" && myTurn && (
-        <div className="cb-bids" role="group" aria-label="Your bid">
-          <span>How many tricks will you win?</span>
-          <div>
-            {Array.from({ length: MAX_BID }, (_, i) => i + 1).map((n) => (
-              <button key={n} type="button" onClick={() => act({ type: "bid", bid: n })}>
-                {n}
-              </button>
-            ))}
-          </div>
-          <small>Suggested: {botBid(hand)}</small>
-        </div>
-      )}
-
-      {state.phase === "roundEnd" && (
-        <div className="cb-scores">
-          <strong>{finished ? "Final scores" : `Round ${state.round} scores`}</strong>
-          <table>
-            <thead>
-              <tr>
-                <th />
-                {state.players.map((p) => (
-                  <th key={p}>{names[p]}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {state.scores.map((row, r) => (
-                <tr key={r}>
-                  <td>R{r + 1}</td>
-                  {row.map((v, s) => (
-                    <td key={s} className={v < 0 ? "is-neg" : ""}>
-                      {v}
-                    </td>
-                  ))}
-                </tr>
+        {state.phase === "bid" && myTurn && !showScores && (
+          <div className="cb-bids" role="group" aria-label="Your bid">
+            <small>MAKE YOUR CALL</small>
+            <strong>How many tricks?</strong>
+            <span>Win at least your bid to score points.</span>
+            <div>
+              {Array.from({ length: MAX_BID }, (_, i) => i + 1).map((n) => (
+                <button key={n} type="button" className={n === botBid(hand) ? "is-suggested" : ""} onClick={() => act({ type: "bid", bid: n })}>{n}</button>
               ))}
-              <tr className="is-total">
-                <td>Total</td>
-                {state.players.map((_, s) => (
-                  <td key={s}>{total(state, s)}</td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="my-hand cb-hand">
-        {hand.map((card, i) => {
-          const ok = legal.has(card.id);
-          return (
-            <button
-              key={card.id}
-              type="button"
-              className={`hand-card ${ok ? "is-playable" : ""} ${myTurn && state.phase === "play" && !ok ? "is-blocked" : ""}`}
-              data-fly-card={card.id}
-              style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}
-              disabled={!ok}
-              onClick={() => act({ type: "play", card: card.id })}
-            >
-              <PlayingCard card={card} small />
-            </button>
-          );
-        })}
+            </div>
+            <small>Suggested bid: <b>{botBid(hand)}</b> · Check your hand below</small>
+          </div>
+        )}
+        {showScores && (
+          <section className="cb-scores" aria-label="Call Break scores">
+            <div className="cb-scores-title"><strong>{finished ? "Final scores" : `Round ${state.round} scores`}</strong>
+              {state.phase !== "roundEnd" && <button type="button" onClick={() => setScoresOpen(false)} aria-label="Close scores">×</button>}
+            </div>
+            <table>
+              <thead><tr><th scope="col">Round</th>{state.players.map((p) => <th scope="col" key={p}>{names[p]}</th>)}</tr></thead>
+              <tbody>
+                {state.scores.map((row, r) => <tr key={r}><th scope="row">{r + 1}</th>{row.map((v, s) => <td key={s} className={v < 0 ? "is-neg" : ""}>{v}</td>)}</tr>)}
+                <tr className="is-total"><th scope="row">Total</th>{state.players.map((_, s) => <td key={s}>{total(state, s)}</td>)}</tr>
+              </tbody>
+            </table>
+            {state.scores.length === 0 && <p>Scores appear after the first round.</p>}
+          </section>
+        )}
       </div>
-
-      <p className="turn-label">
-        {finished
-          ? "Game over"
-          : state.phase === "roundEnd"
-            ? "Next round coming…"
-            : myTurn
-              ? state.phase === "bid"
-                ? "Make your call"
-                : "Your turn — glowing cards can be played"
-              : `${names[state.players[state.turn]]} is ${state.phase === "bid" ? "bidding" : "thinking"}…`}
-      </p>
+      <div className={`cb-hand-dock ${myTurn ? "is-turn" : ""}`}>
+        <div className="cb-hand-meta">
+          <div className="cb-me"><b>You</b><span>{state.bids[mySeat] === null ? "Ready to bid" : <><strong>{state.tricks[mySeat]} / {state.bids[mySeat]}</strong> tricks</>}</span></div>
+          <span className="cb-your-score">Score <b>{total(state, mySeat)}</b></span>
+        </div>
+        <p className="turn-label" role="status">{turnText}</p>
+        <div className="my-hand cb-hand" data-fly-hand>
+          {hand.map((card) => {
+            const ok = legal.has(card.id);
+            return (
+              <button key={card.id} type="button"
+                className={`hand-card ${ok ? "is-playable" : ""} ${myTurn && state.phase === "play" && !ok ? "is-blocked" : ""}`}
+                data-fly-card={card.id} disabled={!ok} aria-label={`Play ${cardLabel(card)}`}
+                onClick={() => act({ type: "play", card: card.id })}>
+                <PlayingCard card={card} small />
+              </button>
+            );
+          })}
+        </div>
+        <LogLine log={state.log} names={names} />
+      </div>
     </div>
   );
 }

@@ -312,3 +312,144 @@ test('chess draw claims finish and pool results wait until the final shot settle
   await expect(page.locator('.pool-game')).toHaveAttribute('aria-busy','false',{timeout:6000});
   await expect(page.getByText('YOU WON!',{exact:true})).toBeVisible();
 });
+
+async function observeCardAudio(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('cp_music_off', '1');
+    const decoded = new WeakSet();
+    window.cardAudio = {decoded: 0, starts: [], stops: 0};
+    const decode = AudioContext.prototype.decodeAudioData;
+    AudioContext.prototype.decodeAudioData = async function (...args) {
+      const buffer = await decode.apply(this, args);
+      decoded.add(buffer);
+      window.cardAudio.decoded++;
+      return buffer;
+    };
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...args) {
+      window.cardAudio.starts.push({recorded: decoded.has(this.buffer), at: args[0], duration: args[2]});
+      return start.apply(this, args);
+    };
+    const stop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.stop = function (...args) {
+      window.cardAudio.stops++;
+      return stop.apply(this, args);
+    };
+  });
+}
+
+for (const size of [{width:360,height:640}, {width:1280,height:800}, {width:844,height:390}]) {
+  test(`Call Break table, readable hand and recorded throws ${size.width}x${size.height}`, async ({page}, testInfo) => {
+    test.setTimeout(60000);
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize(size);
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await observeCardAudio(page);
+    await signIn(page);
+    await expect.poll(() => page.evaluate(() => window.cardAudio.decoded)).toBe(5);
+    await openGame(page, 'game-card--callbreak');
+    await expect(page.locator('.cb-hud')).toContainText('ROUND');
+    await expect(page.locator('.cb-hand .hand-card')).toHaveCount(13);
+    await page.locator('.cb-score-toggle').click();
+    await expect(page.getByRole('region',{name:'Call Break scores',exact:true})).toContainText('Scores appear after the first round.');
+    await page.getByRole('button',{name:'Close scores',exact:true}).click();
+    await page.getByRole('group',{name:'Your bid',exact:true}).getByRole('button',{name:'1',exact:true}).click();
+    await expect.poll(async () => (await gameState(page)).phase).toBe('play');
+    await expect(page.locator('.fly-card')).toHaveCount(0);
+    await page.evaluate(() => {window.cardAudio.starts = [];});
+    await page.locator('.cb-hand .is-playable').first().click();
+    await expect(page.locator('.cb-hand .hand-card')).toHaveCount(12);
+    await expect.poll(() => page.evaluate(() => window.cardAudio.starts.length), {intervals:[20]}).toBe(2);
+    const sounds = await page.evaluate(() => window.cardAudio.starts);
+    expect(sounds.every(sound => sound.recorded)).toBe(true);
+    expect(sounds[1].at - sounds[0].at).toBeCloseTo(0.3, 2);
+    await expect(page.locator('.fly-card')).toHaveCount(0);
+    await page.evaluate(async () => {
+      const url = performance.getEntriesByType('resource').map(e => e.name).find(u => u.includes('/src/backend/store.ts'));
+      const {api,getDB} = await import(url);
+      const {callBreakGame,legalCards} = await import('/src/games/callbreak.tsx');
+      const g = getDB().games.at(-1);
+      let state = {...callBreakGame.init(g.players),phase:'play',bids:[1,2,3,4],turn:1};
+      for (let seat=1;seat<4;seat++) state=callBreakGame.apply(state,{type:'play',card:legalCards(state.hands[seat],state.trick)[0].id},g.players[seat]);
+      api.updateGame(g.id,s=>{s.state=state;});
+    });
+    await expect(page.locator('.cb-played')).toHaveCount(3);
+    await expect(page.locator('.fly-card')).toHaveCount(0);
+    const layout = await page.locator('.cb-game').evaluate(root => {
+      const box = node => {const r=node.getBoundingClientRect(); return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+      return {root:box(root), dock:box(root.querySelector('.cb-hand-dock')), hand:box(root.querySelector('.cb-hand')), body:box(root.parentElement),
+        cards:[...root.querySelectorAll('.cb-hand .hand-card')].map(box),
+        played:[...root.querySelectorAll('.cb-played')].map(box), seats:[...root.querySelectorAll('.cb-seat')].map(box),
+        overflow:root.parentElement.scrollHeight-root.parentElement.clientHeight};
+    });
+    expect(layout.overflow).toBeLessThanOrEqual(2);
+    expect(layout.body.bottom-layout.dock.bottom).toBeLessThan(20);
+    for (const card of layout.cards) {
+      expect(card.left).toBeGreaterThanOrEqual(layout.hand.left-1);
+      expect(card.right).toBeLessThanOrEqual(layout.hand.right+1);
+      expect(card.width).toBeGreaterThanOrEqual(size.width===360?44:42);
+    }
+    for (const played of layout.played) for (const seat of layout.seats) {
+      const overlap=Math.max(0,Math.min(played.right,seat.right)-Math.max(played.left,seat.left))*Math.max(0,Math.min(played.bottom,seat.bottom)-Math.max(played.top,seat.top));
+      expect(overlap,`trick overlaps seat: ${JSON.stringify({played,seat})}`).toBe(0);
+    }
+    await page.screenshot({path:testInfo.outputPath('callbreak-playing.png')});
+    if (size.width===360) {
+      await page.evaluate(async () => {
+        const url=performance.getEntriesByType('resource').map(e=>e.name).find(u=>u.includes('/src/backend/store.ts'));
+        const {api,getDB}=await import(url);
+        const {callBreakGame,legalCards}=await import('/src/games/callbreak.tsx');
+        const g=getDB().games.at(-1);
+        let state=g.state;
+        while(state.phase==='play') state=callBreakGame.apply(state,{type:'play',card:legalCards(state.hands[state.turn],state.trick)[0].id},state.players[state.turn]);
+        api.updateGame(g.id,s=>{s.state=state;});
+      });
+      await expect(page.getByRole('region',{name:'Call Break scores',exact:true})).toContainText('Round 1 scores');
+      await expect.poll(async () => (await gameState(page)).round,{timeout:7000}).toBe(2);
+      await expect(page.locator('.cb-hand .hand-card')).toHaveCount(13);
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+test('recorded card sounds respect mute and unavailable assets do not synthesize replacements',async ({page,context}) => {
+  await observeCardAudio(page);
+  await signIn(page);
+  await expect.poll(()=>page.evaluate(()=>window.cardAudio.decoded)).toBe(5);
+  const muted = await page.evaluate(async () => {
+    const url=performance.getEntriesByType('resource').map(e=>e.name).find(u=>u.includes('/src/games/sfx.ts'));
+    const {play,setMuted}=await import(url);
+    window.cardAudio.starts=[];
+    play('shuffle');
+    const shuffleDuration=window.cardAudio.starts[0].duration;
+    setMuted(true);
+    setMuted(false);
+    window.cardAudio.starts=[];
+    play('card');
+    const before=window.cardAudio.stops;
+    setMuted(true);
+    const stopped=window.cardAudio.stops-before;
+    const count=window.cardAudio.starts.length;
+    play('card');play('shuffle');
+    const whileMuted=window.cardAudio.starts.length;
+    setMuted(false);
+    return {count,whileMuted,after:window.cardAudio.starts.length,stopped,shuffleDuration};
+  });
+  expect(muted).toMatchObject({count:2,whileMuted:2,after:2,stopped:2});
+  expect(muted.shuffleDuration).toBeLessThanOrEqual(0.47);
+  const offline=await context.newPage();
+  await observeCardAudio(offline);
+  await offline.route('**/media/audio/cards/*.ogg',route=>route.abort());
+  await offline.goto('http://127.0.0.1:5174');
+  await offline.locator('body').click({position:{x:2,y:2}});
+  const offlineResult=await offline.evaluate(async () => {
+    const url=performance.getEntriesByType('resource').map(e=>e.name).find(u=>u.includes('/src/games/sfx.ts'));
+    const {play}=await import(url);
+    window.cardAudio.starts=[];
+    play('card');play('shuffle');play('deal');
+    return window.cardAudio;
+  });
+  expect(offlineResult.decoded).toBe(0);
+  expect(offlineResult.starts).toEqual([]);
+});
