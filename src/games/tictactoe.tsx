@@ -126,14 +126,14 @@ export const ticTacToeGame: GameDef<State, Action> = {
     winner: null,
   }),
   apply: (state, action, by) => {
-    if (state.winner) return state;
+    const seat = state.players.indexOf(by);
+    if (state.winner || seat < 0) return state;
     if (action.type === "next") {
       if (!state.roundOver || action.round !== state.round) return state;
       const starter = 1 - state.starter;
       return { ...state, board: Array(9).fill(null), roundOver: null, starter, turn: starter, round: state.round + 1, log: `Round ${state.round + 1}!` };
     }
-    const seat = state.players.indexOf(by);
-    if (state.roundOver || seat !== state.turn || state.board[action.cell] !== null) return state;
+    if (state.roundOver || seat !== state.turn || action.type !== "mark" || state.board[action.cell] !== null) return state;
     const board = [...state.board];
     board[action.cell] = seat;
     const line = lineOf(board);

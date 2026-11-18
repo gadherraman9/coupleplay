@@ -27,6 +27,7 @@ export type Sfx =
   | "error"
   | "chips"
   | "deal"
+  | "shuffle"
   | "fold"
   | "check"
   | "gunshot"
@@ -37,6 +38,8 @@ export type Sfx =
   | "reward";
 
 const MUTE_KEY = "cp_sfx_muted";
+const MASTER_VOLUME = 0.55;
+const sources = new Set<AudioScheduledSourceNode>();
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let muted = (() => {
@@ -55,10 +58,10 @@ function audio() {
     if (!Ctor) return null;
     ctx = new Ctor();
     master = ctx.createGain();
-    master.gain.value = 0.55;
+    master.gain.value = muted ? 0 : MASTER_VOLUME;
     master.connect(ctx.destination);
   }
-  if (ctx.state === "suspended") void ctx.resume();
+  if (ctx.state === "suspended") void ctx.resume().catch(() => {});
   return ctx;
 }
 
@@ -77,6 +80,15 @@ export const isMuted = () => muted;
 
 export function setMuted(value: boolean) {
   muted = value;
+  if (ctx && master) {
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setValueAtTime(value ? 0 : MASTER_VOLUME, ctx.currentTime);
+    if (value) {
+      // Stop future riffle/tap voices too, so unmuting cannot revive them.
+      sources.forEach((source) => source.stop(ctx!.currentTime));
+      sources.clear();
+    }
+  }
   try {
     localStorage.setItem(MUTE_KEY, value ? "1" : "0");
   } catch {
@@ -102,6 +114,15 @@ interface ToneOpts {
   attack?: number;
 }
 
+function track(source: AudioScheduledSourceNode, ...nodes: AudioNode[]) {
+  sources.add(source);
+  source.onended = () => {
+    sources.delete(source);
+    source.disconnect();
+    nodes.forEach((node) => node.disconnect());
+  };
+}
+
 function tone(ac: AudioContext, { freq, to, dur, type = "sine", vol = 0.3, at = 0, attack = 0.005 }: ToneOpts) {
   const t = ac.currentTime + at;
   const osc = ac.createOscillator();
@@ -115,9 +136,10 @@ function tone(ac: AudioContext, { freq, to, dur, type = "sine", vol = 0.3, at = 
   osc.connect(gain).connect(master!);
   osc.start(t);
   osc.stop(t + dur + 0.02);
+  track(osc, gain);
 }
 
-function noise(ac: AudioContext, { dur, vol = 0.3, at = 0, freq = 2000, q = 1, type = "bandpass" }: { dur: number; vol?: number; at?: number; freq?: number; q?: number; type?: BiquadFilterType }) {
+function noise(ac: AudioContext, { dur, vol = 0.3, at = 0, freq = 2000, to, attack = 0, q = 1, type = "bandpass" }: { dur: number; vol?: number; at?: number; freq?: number; to?: number; attack?: number; q?: number; type?: BiquadFilterType }) {
   const t = ac.currentTime + at;
   const length = Math.max(1, Math.floor(ac.sampleRate * dur));
   const buffer = ac.createBuffer(1, length, ac.sampleRate);
@@ -127,13 +149,27 @@ function noise(ac: AudioContext, { dur, vol = 0.3, at = 0, freq = 2000, q = 1, t
   src.buffer = buffer;
   const filter = ac.createBiquadFilter();
   filter.type = type;
-  filter.frequency.value = freq;
+  filter.frequency.setValueAtTime(freq, t);
+  if (to) filter.frequency.exponentialRampToValueAtTime(to, t + dur);
   filter.Q.value = q;
   const gain = ac.createGain();
-  gain.gain.setValueAtTime(vol, t);
+  gain.gain.setValueAtTime(attack ? 0.0001 : vol, t);
+  if (attack) gain.gain.exponentialRampToValueAtTime(vol, t + attack);
   gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   src.connect(filter).connect(gain).connect(master!);
   src.start(t);
+  src.stop(t + dur);
+  track(src, filter, gain);
+}
+
+function paperSlide(ac: AudioContext, vol: number, dur: number, at = 0) {
+  noise(ac, { dur, vol, at, freq: 3800, to: 1100, q: 0.55, attack: 0.012 });
+  noise(ac, { dur: dur * 0.65, vol: vol * 0.3, at: at + 0.015, freq: 750, q: 0.5, type: "lowpass", attack: 0.008 });
+}
+
+function tableTap(ac: AudioContext, vol: number, at = 0) {
+  noise(ac, { dur: 0.035, vol, at, freq: 950, q: 0.7, type: "lowpass", attack: 0.002 });
+  tone(ac, { freq: 165, to: 95, dur: 0.055, vol: vol * 0.45, at, attack: 0.002 });
 }
 
 const notes = (ac: AudioContext, freqs: number[], gap: number, opts: Partial<ToneOpts> = {}) =>
@@ -243,10 +279,10 @@ function themed(ac: AudioContext, name: Sfx, v: (x: number) => number) {
 }
 
 export function play(name: Sfx, volume = 1) {
-  if (muted) return;
+  if (muted || !Number.isFinite(volume) || volume <= 0) return;
   const ac = audio();
   if (!ac || !master || ac.state !== "running") return;
-  const v = (x: number) => x * volume;
+  const v = (x: number) => x * Math.min(volume, 1);
   if (theme !== "classic" && themed(ac, name, v)) return;
   switch (name) {
     case "tap":
@@ -274,11 +310,11 @@ export function play(name: Sfx, volume = 1) {
       notes(ac, [784, 988, 1175, 1568], 0.07, { type: "sine", vol: v(0.22) });
       break;
     case "card":
-      noise(ac, { dur: 0.12, vol: v(0.35), freq: 3500, q: 0.8, type: "highpass" });
-      tone(ac, { freq: 180, dur: 0.05, type: "triangle", vol: v(0.15), at: 0.08 });
+      paperSlide(ac, v(0.3), 0.32);
+      tableTap(ac, v(0.2), 0.35);
       break;
     case "draw":
-      noise(ac, { dur: 0.18, vol: v(0.25), freq: 2500, q: 0.6 });
+      paperSlide(ac, v(0.23), 0.2);
       break;
     case "place":
       tone(ac, { freq: 340, to: 220, dur: 0.1, type: "triangle", vol: v(0.3) });
@@ -340,15 +376,24 @@ export function play(name: Sfx, volume = 1) {
       }
       break;
     case "deal":
-      noise(ac, { dur: 0.08, vol: v(0.3), freq: 5000, q: 0.7, type: "highpass" });
+      paperSlide(ac, v(0.26), 0.14);
+      tableTap(ac, v(0.13), 0.16);
+      break;
+    case "shuffle":
+      for (let i = 0; i < 16; i += 1) {
+        const at = i * 0.009 + i * i * 0.00055;
+        noise(ac, { dur: 0.025, vol: v(0.16 + (i % 3) * 0.025), at, freq: 2600 + (i % 4) * 650, q: 0.6, attack: 0.002 });
+      }
+      paperSlide(ac, v(0.22), 0.16, 0.27);
+      tableTap(ac, v(0.22), 0.39);
       break;
     case "fold":
       noise(ac, { dur: 0.2, vol: v(0.2), freq: 1500, q: 0.5 });
       tone(ac, { freq: 300, to: 180, dur: 0.15, type: "triangle", vol: v(0.1) });
       break;
     case "check":
-      tone(ac, { freq: 140, dur: 0.06, type: "sine", vol: v(0.35) });
-      tone(ac, { freq: 140, dur: 0.06, type: "sine", vol: v(0.35), at: 0.12 });
+      tableTap(ac, v(0.35));
+      tableTap(ac, v(0.28), 0.11);
       break;
     case "gunshot":
       noise(ac, { dur: 0.05, vol: v(0.9), freq: 2500, q: 0.4, type: "lowpass" });

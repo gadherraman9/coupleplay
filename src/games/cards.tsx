@@ -27,6 +27,7 @@ interface State {
   turn: number;
   direction: 1 | -1;
   drew: boolean;
+  drawnCard: number | null;
   log: string;
   winner: string | null;
 }
@@ -59,6 +60,7 @@ function makeDeck() {
 }
 
 function playable(state: State, card: Card) {
+  if (state.drew && card.id !== state.drawnCard) return false;
   const top = state.discard[state.discard.length - 1];
   return card.color === "wild" || card.color === state.color || card.value === top.value;
 }
@@ -230,6 +232,7 @@ export const cardsGame: GameDef<State, Action> = {
       turn: 0,
       direction: 1,
       drew: false,
+      drawnCard: null,
       log: "Match the color or number. Wild cards go on anything!",
       winner: null,
     };
@@ -242,11 +245,11 @@ export const cardsGame: GameDef<State, Action> = {
     if (action.type === "draw") {
       if (state.drew) return state;
       const { deck, discard, drawn } = draw(state, 1);
-      return { ...state, deck, discard, hands: { ...state.hands, [by]: [...state.hands[by], ...drawn] }, drew: true, log: `${by}|drew a card` };
+      return { ...state, deck, discard, hands: { ...state.hands, [by]: [...state.hands[by], ...drawn] }, drew: true, drawnCard: drawn[0]?.id ?? null, log: `${by}|drew a card` };
     }
     if (action.type === "pass") {
       if (!state.drew) return state;
-      return { ...state, drew: false, turn: step(state, seat), log: `${by}|passed` };
+      return { ...state, drew: false, drawnCard: null, turn: step(state, seat), log: `${by}|passed` };
     }
 
     const card = state.hands[by].find((c) => c.id === action.card);
@@ -258,9 +261,9 @@ export const cardsGame: GameDef<State, Action> = {
       discard: [...state.discard, card],
       color: card.color === "wild" ? action.color ?? "red" : card.color,
       drew: false,
+      drawnCard: null,
     };
     let log = `played ${card.color === "wild" ? "" : `${card.color} `}${LABEL[card.value] ?? card.value}${card.color === "wild" ? ` and picked ${next.color}` : ""}`;
-    if (hand.length === 0) return { ...next, winner: by, log: `${by}|played the last card and won! 🎉` };
     if (hand.length === 1) log += " — LAST CARD!";
 
     let skip = 1;
@@ -277,6 +280,7 @@ export const cardsGame: GameDef<State, Action> = {
       log += ` — @[${victim}] drew ${drawn.length} cards`;
       skip = 2;
     }
+    if (hand.length === 0) return { ...next, winner: by, log: `${by}|${log} — played the last card and won!` };
     return { ...next, turn: step(next, seat, skip), log: `${by}|${log}` };
   },
   winner: (state) => state.winner,

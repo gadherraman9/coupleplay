@@ -7,6 +7,7 @@ import "./layout.css";
 import "./games.css";
 import "./v4.css";
 import "./skins.css";
+import "./play.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

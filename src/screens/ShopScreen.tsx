@@ -3,9 +3,10 @@ import { ArrowLeft, Check, Heart } from "lucide-react";
 import { api } from "../backend/store";
 import { attempt, useApp } from "../context";
 import { APP_THEMES, CHAT_THEMES, chatThemeStyle } from "../themes";
-import { defaultSkin, SKINS, tableFor } from "../skins";
+import { pickedSkin, saveCustomCardBack, SKINS, tableFor, useCustomCardBack } from "../skins";
 import type { Skin, SkinKind } from "../skins";
 import SkinPreview from "../components/SkinPreview";
+import CustomCardBack from "../components/CustomCardBack";
 
 const SKIN_GROUPS: { kind: SkinKind; title: string; short: string }[] = [
   { kind: "dice", title: "Dice", short: "🎲 Dice" },
@@ -22,6 +23,7 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
   const [kind, setKind] = useState<SkinKind>("dice");
   const items = tab === "app" ? APP_THEMES : CHAT_THEMES;
   const active = tab === "app" ? me.appTheme : me.chatTheme;
+  const photo = useCustomCardBack(me.id);
 
   const chooseSkin = (skin: Skin) => {
     const free = skin.price === 0;
@@ -32,6 +34,7 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
         notify(`Unlocked ${skin.name}! 🎉`);
       }
       api.applySkin(me.id, skin.kind, skin.id, free);
+      if (skin.kind === "cards" && photo) saveCustomCardBack(me.id);
       if (owned) notify(`${skin.name} skin applied`);
     });
   };
@@ -89,16 +92,17 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
         )}
         {tab === "skins" ? (
           SKIN_GROUPS.filter((group) => group.kind === kind).map((group) => {
-            const current = group.kind === "table" ? tableFor(me.skins).id : me.skins?.[group.kind] ?? defaultSkin(group.kind).id;
+            const current = group.kind === "cards" && photo ? undefined : group.kind === "table" ? tableFor(me.skins).id : pickedSkin(me.skins, group.kind).id;
             return (
               <section key={group.kind} className="skin-section">
                 <h3>{group.title}</h3>
+                {group.kind === "cards" && <CustomCardBack />}
                 <div className="shop-grid shop-grid--skins">
                   {SKINS.filter((skin) => skin.kind === group.kind).map((skin) => {
                     const owned = skin.price === 0 || me.ownedThemes.includes(skin.id);
                     const isActive = current === skin.id;
                     return (
-                      <button key={skin.id} type="button" className={`shop-item shop-item--skin ${isActive ? "is-active" : ""}`} onClick={() => chooseSkin(skin)}>
+                      <button key={skin.id} type="button" aria-pressed={isActive} className={`shop-item shop-item--skin ${isActive ? "is-active" : ""}`} onClick={() => chooseSkin(skin)}>
                         <SkinPreview skin={skin} />
                         <strong>{skin.name}</strong>
                         <span className="skin-blurb">{skin.blurb}</span>
@@ -164,7 +168,7 @@ export default function ShopScreen({ onBack }: { onBack: () => void }) {
           })}
         </div>
         )}
-        <p className="games-note">Earn hearts by winning games (+20), daily tasks (+10) and signing up (+50).</p>
+        <p className="games-note">Finish any game for 30 hearts. Wins add 20 more, plus streak and level bonuses. Today's challenge earns an extra 50.</p>
       </div>
     </div>
   );

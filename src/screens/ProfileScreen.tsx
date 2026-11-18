@@ -4,11 +4,15 @@ import { Dices, Heart, LogOut, Palette, ShieldCheck } from "lucide-react";
 import { UserAvatar } from "../components/Avatar";
 import { api, friendIds, randomGuestName } from "../backend/store";
 import { attempt, useApp } from "../context";
+import { coupleProgress, highlightText } from "../coupleProgress";
+import { gameById } from "../games/registry";
 
 const HUES = [330, 285, 215, 190, 160, 40, 20, 0];
 
 export default function ProfileScreen({ onOpenShop }: { onOpenShop: () => void }) {
   const { db, me, notify } = useApp();
+  const partner = me.partnerId ? db.users[me.partnerId] : undefined;
+  const duo = coupleProgress(me, partner);
   const [name, setName] = useState(me.displayName);
   const [username, setUsername] = useState(me.username);
   const [password, setPassword] = useState("");
@@ -58,6 +62,28 @@ export default function ProfileScreen({ onOpenShop }: { onOpenShop: () => void }
           <span>🔥 {me.streak} days</span>
         </div>
       </header>
+
+      <section className="card couple-progress" aria-label="Couple stats">
+        <p className="eyebrow">Better together</p>
+        <h3>{duo.eligible ? `${me.displayName} & ${partner!.displayName}` : "Your couple journey"}</h3>
+        {duo.eligible ? <>
+          <div className="couple-rank"><strong>{duo.rank.title}</strong><span>{duo.xp} Couple XP</span></div>
+          <progress aria-label="Couple rank progress" value={duo.xp - duo.rank.from} max={duo.rank.next === null ? Math.max(1, duo.xp - duo.rank.from) : duo.rank.next - duo.rank.from} />
+          <p>{duo.rank.next === null ? "Highest rank reached" : `${duo.rank.next - duo.xp} XP to your next rank`} · 40 XP per completed game together</p>
+          <div className="couple-stats-grid">
+            <span><strong>{duo.played}</strong>Games together</span>
+            <span><strong>{duo.streak}</strong>Daily play streak</span>
+            <span><strong>{duo.bestStreak}</strong>Longest streak</span>
+            <span><strong>{duo.favoriteGame ? gameById(duo.favoriteGame)?.title : "Not yet"}</strong>Favorite game</span>
+          </div>
+          <p>Head to head: you {duo.headToHead.wins[me.id] ?? 0} · {partner!.displayName} {duo.headToHead.wins[partner!.id] ?? 0} · draws {duo.headToHead.draws}</p>
+          {duo.recent.length > 0 && <details className="match-highlights"><summary>Recent games together</summary>
+            <ul>{duo.recent.map(receipt => <li key={receipt.sessionId}><strong>{gameById(receipt.game)?.title}</strong> · {receipt.day}
+              {receipt.highlights.length > 0 && <ol>{receipt.highlights.map(h => <li key={h.rev}>{highlightText(h.log, Object.fromEntries(Object.values(db.users).map(u => [u.id, u.displayName])))}</li>)}</ol>}
+            </li>)}</ul>
+          </details>}
+        </> : <p>Choose each other as partners from Friends, then finish a game together. Bot and solo games never earn Couple XP.</p>}
+      </section>
 
       {me.isGuest && (
         <form className="card signup-card" onSubmit={signUp}>

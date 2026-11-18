@@ -31,12 +31,70 @@ export function levelProgress(xp = 0) {
   return { level, into: xp - from, need: to - from, pct: Math.round(((xp - from) / (to - from)) * 100) };
 }
 
-export const LEVEL_REWARD = (level: number) => 25 + level * 5;
-export const XP_PLAY = 10;
+export const LEVEL_REWARD = (level: number) => Math.min(100, 25 + level * 5);
+export const XP_PLAY = 20;
 export const XP_WIN = 30;
+export const COMPLETION_HEARTS = 30;
 export const WIN_HEARTS = 20;
 // Extra hearts for a win streak: +5 per win in a row, capped.
 export const streakBonus = (streak: number) => Math.min(25, Math.max(0, streak - 1) * 5);
+
+// Data-only mirror of games/registry.ts: no React/game/store import cycle.
+// progression.test.ts checks parity against the actual registry source.
+export const REGISTERED_GAME_IDS = [
+  "ludo", "poker", "callbreak", "rummy", "cards", "chess", "pool",
+  "fourinrow", "snakes", "checkers", "tycoon", "dots", "tictactoe", "bounce",
+] as const;
+export const SOLO_GAME_IDS = new Set<string>(["bounce"]);
+export const isRegisteredGame = (id: string) => (REGISTERED_GAME_IDS as readonly string[]).includes(id);
+
+export const DARE_HEARTS = 50;
+export const DARE_XP = 25;
+export const dareStreakBonus = streakBonus;
+
+export interface DailyDare {
+  day: string;
+  gameId: string;
+  title: string;
+  hearts: number;
+  xp: number;
+}
+
+// Rotates over every registered id, independent of locale, list order or RNG.
+export function dailyDare(at = Date.now(), gameIds: readonly string[] = REGISTERED_GAME_IDS): DailyDare {
+  const ids = [...new Set(gameIds)].sort();
+  if (!ids.length) throw new Error("A daily dare needs at least one game");
+  const day = dayKey(at);
+  const ordinal = Math.floor(Date.parse(day) / 86_400_000);
+  return {
+    day, gameId: ids[((ordinal % ids.length) + ids.length) % ids.length],
+    title: "Complete today's featured game", hearts: DARE_HEARTS, xp: DARE_XP,
+  };
+}
+
+// Consecutive distinct UTC play dates; today's absence keeps yesterday alive.
+export function dateStreak(days: readonly string[], at = Date.now()) {
+  const today = dayKey(at);
+  const dates = [...new Set(days)].filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today).sort();
+  let run = 0;
+  let best = 0;
+  let previous: string | undefined;
+  for (const day of dates) {
+    run = previous && Date.parse(day) - Date.parse(previous) === 86_400_000 ? run + 1 : 1;
+    best = Math.max(best, run);
+    previous = day;
+  }
+  const lastDay = dates[dates.length - 1];
+  const current = lastDay === today || lastDay === dayKey(at - 86_400_000) ? run : 0;
+  return { current, best, lastDay };
+}
+
+export function dailyDareState(user: User, at = Date.now()) {
+  const dare = dailyDare(at);
+  const days = Object.values(user.gameReceipts ?? {}).flatMap((r) => r.dare ? [r.dare.day] : []);
+  const streak = dateStreak(days, at);
+  return { ...dare, completed: days.includes(dare.day), streak: streak.current, bestStreak: streak.best };
+}
 
 export interface Mission {
   id: string;
@@ -56,7 +114,7 @@ export interface MissionState {
 }
 
 export const CARD_GAMES = new Set(["poker", "callbreak", "rummy", "cards"]);
-export const BOARD_GAMES = new Set(["ludo", "snakes", "chess", "checkers", "tycoon"]);
+export const BOARD_GAMES = new Set(["ludo", "snakes", "chess", "checkers", "tycoon", "fourinrow", "dots", "tictactoe"]);
 
 export const MISSIONS: Mission[] = [
   { id: "play3", title: "Play 3 games", goal: 3, reward: 15, count: (m) => m.played },
@@ -65,7 +123,8 @@ export const MISSIONS: Mission[] = [
   { id: "board", title: "Play a board game", goal: 1, reward: 15, count: (m) => m.board },
 ];
 
-export function missionState(user: User): MissionState {
+export function missionState(user: User, at = Date.now()): MissionState {
   const m = user.missions;
-  return m && m.day === dayKey() ? m : { day: dayKey(), played: 0, won: 0, cards: 0, board: 0, claimed: [] };
+  const day = dayKey(at);
+  return m && m.day === day ? m : { day, played: 0, won: 0, cards: 0, board: 0, claimed: [] };
 }

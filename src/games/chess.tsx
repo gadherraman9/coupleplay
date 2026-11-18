@@ -11,7 +11,7 @@ function PieceImg({ piece, className = "" }: { piece: Piece; className?: string 
 }
 
 // Full chess rules: castling, en passant, promotion, check, mate, stalemate,
-// the 50-move rule and bare-king draws. A draw replays with colours swapped.
+// repetition, move-count claims and dead positions.
 
 type Color = "w" | "b";
 type Kind = "P" | "N" | "B" | "R" | "Q" | "K";
@@ -42,12 +42,14 @@ interface State extends Pos {
   last: Move | null;
   captured: Piece[];
   check: boolean;
+  repetitions: Record<string, number>;
   over: { result: "mate" | "draw" | "resign"; reason: string } | null;
   log: string;
   winner: string | null;
 }
 
-type Action = { type: "move"; from: number; to: number; promo?: Kind } | { type: "resign" } | { type: "next"; game: number };
+type Action = { type: "move"; from: number; to: number; promo?: Kind } | { type: "resign" }
+  | { type: "claimDraw"; move?: { from: number; to: number; promo?: Kind } };
 
 const GLYPH: Record<Kind, string> = { K: "♚", Q: "♛", R: "♜", B: "♝", N: "♞", P: "♟" };
 const VALUE: Record<Kind, number> = { P: 100, N: 320, B: 330, R: 500, Q: 900, K: 0 };
@@ -201,9 +203,42 @@ function legalMoves(pos: Pos) {
   return pseudoMoves(pos).filter((m) => !inCheck(makeMove(pos, m), pos.turn));
 }
 
-function bareKings(board: Board) {
-  const rest = board.filter((p) => p && p[1] !== "K") as Piece[];
-  return rest.length === 0 || (rest.length === 1 && "NB".includes(rest[0][1]));
+function deadPosition(board: Board) {
+  const rest = board.flatMap((p, i) => p && p[1] !== "K" ? [{ piece: p, square: i }] : []);
+  if (rest.length === 0 || (rest.length === 1 && "NB".includes(rest[0].piece[1]))) return true;
+  // Bishops confined to one square colour cannot mate, including promoted bishops.
+  return rest.every(({ piece }) => piece[1] === "B")
+    && rest.every(({ square }) => (row(square) + col(square)) % 2 === (row(rest[0].square) + col(rest[0].square)) % 2);
+}
+
+export function positionKey(pos: Pos) {
+  // A nominal en-passant square distinguishes positions only if the capture
+  // is actually legal (a pinned pawn cannot exercise that right).
+  const ep = pos.ep !== null && legalMoves(pos).some((m) => m.ep) ? pos.ep : "-";
+  const castling = "KQkq".split("").filter((right) => pos.castling.includes(right)).join("");
+  return `${pos.board.map((p) => p ?? "--").join("")}|${pos.turn}|${castling}|${ep}`;
+}
+
+function repetitionHistory(state: State) {
+  // Saved games from before repetition tracking start counting on resumption.
+  return state.repetitions ?? { [positionKey(state)]: 1 };
+}
+
+function claimReason(state: State, pos: Pos = state) {
+  if (pos.half >= 100) return "50 moves";
+  if ((repetitionHistory(state)[positionKey(pos)] ?? 0) + (pos === state ? 0 : 1) >= 3) return "threefold repetition";
+  return null;
+}
+
+function availableDrawClaim(state: State) {
+  const reason = claimReason(state);
+  if (reason) return { reason, move: undefined };
+  // A player can announce a legal move that would produce a claimable draw.
+  for (const move of legalMoves(state)) {
+    const nextReason = claimReason(state, makeMove(state, move));
+    if (nextReason) return { reason: nextReason, move };
+  }
+  return null;
 }
 
 // ---------- bot: alpha-beta with simple piece-square bonuses ----------
@@ -270,15 +305,13 @@ function botChoice(pos: Pos) {
 // ---------- game ----------
 
 function newGame(players: string[], white: number, game: number): State {
+  const pos: Pos = { board: startBoard(), turn: "w", castling: "KQkq", ep: null, half: 0 };
   return {
     players,
     white,
     game,
-    board: startBoard(),
-    turn: "w",
-    castling: "KQkq",
-    ep: null,
-    half: 0,
+    ...pos,
+    repetitions: { [positionKey(pos)]: 1 },
     last: null,
     captured: [],
     check: false,
@@ -298,19 +331,12 @@ function ChessView({ state, me, names, act, finished }: GameViewProps<State, Act
   const [picked, setPicked] = useState<number | null>(null);
   const [promo, setPromo] = useState<{ from: number; to: number } | null>(null);
   const moves = useMemo(() => (myTurn ? legalMoves(state) : []), [state, myTurn]);
+  const claim = useMemo(() => myTurn ? availableDrawClaim(state) : null, [state, myTurn]);
   const targets = picked === null ? [] : moves.filter((m) => m.from === picked);
-  const isHost = state.players[0] === me;
 
-  useEffect(() => setPicked(null), [state.last]);
+  useEffect(() => { setPicked(null); setPromo(null); }, [state.last, state.game, state.over]);
   useOnChange(state.captured.length, (prev, next) => next > prev && play("capture", 0.6));
   useOnChange(state.last, (_, m) => m && play(state.check ? "check" : "place"));
-
-  useEffect(() => {
-    if (state.over?.result !== "draw" || finished) return;
-    const game = state.game;
-    const timer = window.setTimeout(() => act({ type: "next", game }), isHost ? 2600 : 6000);
-    return () => window.clearTimeout(timer);
-  }, [state.over, state.game, finished, act, isHost]);
 
   const tap = (i: number) => {
     if (!myTurn) return;
@@ -392,6 +418,11 @@ function ChessView({ state, me, names, act, finished }: GameViewProps<State, Act
         <p className="turn-label">
           {finished ? "Game over" : state.over ? "Draw — new game…" : myTurn ? (state.check ? "Check! Save your king" : "Your move") : `${names[opponent]} is thinking…`}
         </p>
+        {claim && (
+          <button type="button" className="ghost-btn ghost-btn--small chess-draw-claim" onClick={() => act({ type: "claimDraw", ...(claim.move ? { move: claim.move } : {}) })}>
+            Claim draw ({claim.reason}{claim.move ? ` by ${sqName(claim.move.from)}→${sqName(claim.move.to)}${claim.move.promo ?? ""}` : ""})
+          </button>
+        )}
         {!finished && !state.over && (
           <button type="button" className="ghost-btn ghost-btn--small" onClick={() => window.confirm("Resign this game?") && act({ type: "resign" })}>
             Resign
@@ -413,11 +444,7 @@ export const chessGame: GameDef<State, Action> = {
   botDelay: 700,
   init: (players) => newGame(players, 0, 1),
   apply: (state, action, by) => {
-    if (state.winner) return state;
-    if (action.type === "next") {
-      if (state.over?.result !== "draw" || action.game !== state.game) return state;
-      return newGame(state.players, 1 - state.white, state.game + 1);
-    }
+    if (state.winner || !state.players.includes(by)) return state;
     if (state.over) return state;
     const color = colorOf(state, by);
     if (action.type === "resign") {
@@ -425,6 +452,17 @@ export const chessGame: GameDef<State, Action> = {
       return { ...state, over: { result: "resign", reason: "resigned" }, winner: other, log: `${by}|resigned. @[${other}] wins! 🏆` };
     }
     if (color !== state.turn) return state;
+    if (action.type === "claimDraw") {
+      let pos: Pos = state;
+      if (action.move) {
+        const proposed = action.move;
+        const move = legalMoves(state).find((m) => m.from === proposed.from && m.to === proposed.to && (!m.promo || m.promo === (proposed.promo ?? "Q")));
+        if (!move) return state;
+        pos = makeMove(state, move);
+      }
+      const reason = claimReason(state, pos);
+      return reason ? { ...state, over: { result: "draw", reason }, log: `${by}|claimed a draw (${reason})` } : state;
+    }
     const move = legalMoves(state).find((m) => m.from === action.from && m.to === action.to && (!m.promo || m.promo === (action.promo ?? "Q")));
     if (!move) return state;
     const piece = state.board[move.from]!;
@@ -435,16 +473,23 @@ export const chessGame: GameDef<State, Action> = {
     let log = move.castle ? "castled" : `${NAME[piece[1] as Kind]} ${sqName(move.from)}→${sqName(move.to)}`;
     if (taken) log += ` takes ${NAME[taken[1] as Kind]}`;
     if (move.promo) log += ` and promotes to ${NAME[move.promo]}`;
-    const next: State = { ...state, ...pos, last: move, captured: taken ? [...state.captured, taken] : state.captured, check, log: `${by}|${log}${check ? " — check!" : ""}` };
+    const key = positionKey(pos);
+    const history = repetitionHistory(state);
+    const repetitions = { ...history, [key]: (history[key] ?? 0) + 1 };
+    const next: State = { ...state, ...pos, repetitions, last: move, captured: taken ? [...state.captured, taken] : state.captured, check, log: `${by}|${log}${check ? " — check!" : ""}` };
     if (replies === 0 && check) return { ...next, over: { result: "mate", reason: "checkmate" }, winner: by, log: `${by}|checkmate! 🏆` };
     if (replies === 0) return { ...next, over: { result: "draw", reason: "stalemate" }, log: "Stalemate — it's a draw" };
-    if (pos.half >= 100) return { ...next, over: { result: "draw", reason: "50 moves" }, log: "50 moves without a capture — draw" };
-    if (bareKings(pos.board)) return { ...next, over: { result: "draw", reason: "material" }, log: "Not enough pieces to mate — draw" };
+    if (pos.half >= 150) return { ...next, over: { result: "draw", reason: "75 moves" }, log: "75 moves without a pawn move or capture — draw" };
+    if (repetitions[key] >= 5) return { ...next, over: { result: "draw", reason: "fivefold repetition" }, log: "Fivefold repetition — draw" };
+    if (deadPosition(pos.board)) return { ...next, over: { result: "draw", reason: "material" }, log: "Not enough pieces to mate — draw" };
     return next;
   },
-  winner: (state) => state.winner,
+  winner: (state) => state.over?.result === "draw" ? "draw" : state.winner,
   currentPlayer: (state) => (state.over ? null : playerOf(state, state.turn)),
   botMove: (state) => {
+    if (state.over) return null;
+    const claim = availableDrawClaim(state);
+    if (claim) return { type: "claimDraw", ...(claim.move ? { move: claim.move } : {}) };
     const m = botChoice(state);
     return m ? { type: "move", from: m.from, to: m.to, promo: m.promo } : null;
   },

@@ -14,6 +14,9 @@ import { ClipPlayer } from "../games/clips";
 import ConversationView from "./ConversationView";
 import { UserAvatar } from "./Avatar";
 import PlayerProfileSheet from "./PlayerProfileSheet";
+import GameReactions from "./GameReactions";
+import { POOL_REPLAY_MS } from "../games/pool";
+import { highlightText } from "../coupleProgress";
 
 const BUBBLE_MS = 5000;
 const GAME_PHRASES = ["Good game! 🤝", "Nice move 👏", "Your turn ⏳", "Rematch? 🔁", "😂", "😡"];
@@ -25,14 +28,15 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const [chatOpen, setChatOpen] = useState(false);
   const [itemsOpen, setItemsOpen] = useState(false);
   const [profile, setProfile] = useState<string | null>(null);
+  const [resultOpen, setResultOpen] = useState(true);
   const [, setNow] = useState(0);
   const seenMessages = useRef<number | null>(null);
   const [muted, setMutedState] = useState(isMuted());
   const felt = useFelt();
-  // A quick dice-roll clip when a fresh Ludo / Snakes game opens.
+  // A quick dice-roll clip when a fresh Snakes game opens (Ludo opens straight to the board).
   const [diceIntro, setDiceIntro] = useState(() => {
     const s = db.games.find((g) => g.id === sessionId);
-    return Boolean(s && (s.game === "ludo" || s.game === "snakes") && s.rev === 0 && Date.now() - s.createdAt < 15_000);
+    return Boolean(s && s.game === "snakes" && s.rev === 0 && Date.now() - s.createdAt < 15_000);
   });
 
   useEffect(() => onMuteChange(setMutedState), []);
@@ -56,19 +60,13 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
       if (!def) return;
       attempt(notify, () =>
         api.updateGame(sessionId, (s) => {
+          const before = s.state;
           s.state = def.apply(s.state, action, me.id);
+          if (s.state !== before && JSON.stringify(s.state) !== JSON.stringify(before)) s.playedBy = [...new Set([...(s.playedBy ?? []), me.id])];
           s.winner = def.winner(s.state);
           if (s.winner) s.status = "finished";
         }),
       );
-      const typed = action as { type?: string; score?: number };
-      if (def.id === "bounce" && typed.type === "over" && typed.score) {
-        const reward = Math.min(15, Math.floor(typed.score / 150));
-        if (reward > 0) {
-          api.addHearts(me.id, reward);
-          notify(`+${reward} hearts for your bounce!`);
-        }
-      }
     },
     [def, sessionId, me.id, notify],
   );
@@ -111,38 +109,42 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const endedRef = useRef(session?.status === "finished");
   const [celebrate, setCelebrate] = useState(false);
   useEffect(() => {
-    if (session?.status !== "finished" || endedRef.current || def?.soloOnly) return;
-    endedRef.current = true;
-    const won = session.winner === me.id;
+    if (session?.status !== "finished" || endedRef.current) return;
+    const won = session.winner === me.id && !def?.soloOnly;
     const timer = window.setTimeout(() => {
-      play(won ? "win" : "lose");
+      endedRef.current = true;
+      play(won ? "win" : session.winner === "draw" || def?.soloOnly ? "reward" : "lose");
       if (won) setCelebrate(true);
-    }, 900);
+    }, def?.id === "pool" ? POOL_REPLAY_MS + 100 : 900);
     return () => window.clearTimeout(timer);
-  }, [session?.status, session?.winner, me.id, def?.soloOnly]);
+  }, [session?.status, session?.winner, me.id, def?.soloOnly, def?.id]);
 
-  const rewardKey = `cp_reward_${sessionId}_${me.id}`;
-  const [reward, setReward] = useState<ReturnType<typeof api.recordGame> | null>(null);
+  const reward = me.gameReceipts?.[sessionId];
+  const claimed = useRef<string | null>(null);
   useEffect(() => {
-    if (session?.status !== "finished" || !def) return;
+    if (session?.status !== "finished" || reward || claimed.current === sessionId) return;
+    claimed.current = sessionId;
+    void api.recordGame(me.id, sessionId).then(receipt => {
+      if (receipt.levelUp) notify(`Level ${receipt.levelUp}! +${receipt.levelReward} bonus hearts`);
+    }).catch(error => {
+      claimed.current = null;
+      notify(error instanceof Error ? error.message : "Could not record your reward");
+    });
+  }, [session?.status, reward, me.id, sessionId, notify]);
+
+  const highlights = reward?.highlights ?? session?.highlights ?? [];
+  const shareHighlights = async () => {
+    const text = [def?.title ?? "Game", ...highlights.map((h) => highlightText(h.log, names))].join("\n");
     try {
-      if (localStorage.getItem(rewardKey)) return;
-      localStorage.setItem(rewardKey, "1");
-    } catch {
-      /* storage blocked: reward anyway */
+      if (navigator.share) await navigator.share({ title: "Match highlights", text });
+      else {
+        await navigator.clipboard.writeText(text);
+        notify("Highlights copied");
+      }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) notify("Could not share highlights");
     }
-    const result = api.recordGame(me.id, def.id, session.winner === me.id, Boolean(def.soloOnly));
-    if (def.soloOnly) {
-      if (result.levelUp) notify(`Level ${result.levelUp}! +${result.levelReward} hearts`);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setReward(result);
-      if (result.levelUp) play("levelup");
-      else if (result.hearts) play("reward");
-    }, 1400);
-    return () => window.clearTimeout(timer);
-  }, [session?.status, session?.winner, me.id, rewardKey, notify, def]);
+  };
 
   const chatCount = db.messages.filter((m) => m.convId === session?.convId).length;
   useEffect(() => {
@@ -186,7 +188,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
   const hasChat = humans.length > 1 || session.convId.startsWith("dm:");
 
   return (
-    <div className="game-overlay" role="dialog" aria-modal="true" aria-label={def.title}>
+    <div className={`game-overlay game-host ${finished ? "game-host--finished" : ""}`} role="dialog" aria-modal="true" aria-label={def.title}>
       <header className="game-topbar">
         <button type="button" className="round-btn" onClick={onClose} aria-label="Close game">
           <X size={19} />
@@ -196,11 +198,14 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
             {def.emoji} {def.title}
           </h2>
           <p>
-            {def.soloOnly
+            {finished ? "Match complete" : def.soloOnly
               ? "Solo play"
-              : `with ${opponents.map((p) => names[p]).join(", ")}`}
+              : current === me.id ? "Your turn" : `${names[current ?? ""] ?? "Opponent"} is playing`}
           </p>
         </div>
+        {finished && !resultOpen && (
+          <button type="button" className="round-btn" onClick={() => setResultOpen(true)} aria-label="Show result"><Trophy size={18} /></button>
+        )}
         <button type="button" className="round-btn" onClick={() => setMuted(!muted)} aria-label={muted ? "Turn sound on" : "Turn sound off"}>
           {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
         </button>
@@ -212,6 +217,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         <button type="button" className={`round-btn ${music ? "" : "is-off"}`} onClick={() => setMusicOn(!music)} aria-label={music ? "Turn music off" : "Turn music on"}>
           {music ? <Music size={17} /> : <Music2 size={17} opacity={0.4} />}
         </button>
+        {!def.soloOnly && <GameReactions convId={session.convId} multiplayer={humans.length > 1} />}
         {hasChat && (
           <button type="button" className="round-btn chat-toggle" onClick={() => setChatOpen((v) => !v)} aria-label="Chat while playing">
             <MessageCircle size={18} />
@@ -241,7 +247,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
         </div>
       )}
 
-      <div className={`game-body game-body--board game-table--${def.id} ${def.felt ? "game-table--felt" : ""}`} style={def.felt ? felt : undefined}>
+      <div className={`game-body game-body--board game-table--${def.id} ${def.felt || skinKindOf(def.id) === "table" ? "game-table--felt" : ""}`} style={def.felt || skinKindOf(def.id) === "table" ? felt : undefined}>
         <View state={session.state} me={me.id} players={session.players} names={names} act={act} finished={finished} />
 
         {diceIntro && (
@@ -251,10 +257,11 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
           </div>
         )}
 
-        {finished && !def.soloOnly && (
+        {finished && resultOpen && (
+          <div className="game-result" role="dialog" aria-modal="true" aria-label="Match result">
           <div className={`win-banner ${session.winner === me.id ? "is-win" : ""}`}>
-            {session.winner === me.id && <ClipPlayer name="win" className="win-clip" hold />}
-            <strong className="win-title">{session.winner === me.id ? "YOU WON! 🎉" : `${(names[session.winner ?? ""] ?? "Someone").toUpperCase()} WON!`}</strong>
+            {session.winner === me.id && !def.soloOnly && <ClipPlayer name="win" className="win-clip" hold />}
+            <strong className="win-title" role="status">{def.soloOnly ? "RUN COMPLETE" : session.winner === "draw" ? "IT'S A DRAW" : session.winner === me.id ? "YOU WON!" : `${(names[session.winner ?? ""] ?? "Opponent").toUpperCase()} WON!`}</strong>
             <div className="win-cards">
               {[...session.players]
                 .sort((a, b) => (a === session.winner ? -1 : b === session.winner ? 1 : 0))
@@ -268,7 +275,7 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
                         <Trophy size={20} />
                       </span>
                     ) : (
-                      <em>OUT</em>
+                      <em>{session.winner === "draw" ? "DRAW" : "GG"}</em>
                     )}
                   </span>
                 ))}
@@ -276,15 +283,23 @@ export default function GameHost({ sessionId, onClose }: { sessionId: string; on
             {reward && (
               <span className="reward-strip">
                 {reward.hearts > 0 && <span className="reward-hearts">+{reward.hearts} ❤</span>}
-                <span className="reward-xp">+{session.winner === me.id ? 40 : 10} XP</span>
-                {reward.streak > 1 && <span className="reward-streak">🔥 {reward.streak} wins in a row{reward.bonus ? ` (+${reward.bonus})` : ""}</span>}
-                {reward.levelUp > 0 && <span className="reward-level">⭐ Level {reward.levelUp}!</span>}
-                {session.winner !== me.id && <span className="reward-nudge">So close! Rematch and win it back 💪</span>}
+                <span className="reward-xp">+{reward.xp} XP</span>
+                {reward.bonus > 0 && <span className="reward-streak">{reward.streak} wins in a row (+{reward.bonus} hearts)</span>}
+                {reward.levelUp > 0 && <span className="reward-level">Level {reward.levelUp}!</span>}
+                {reward.dare && <span className="dare-badge">Daily challenge complete · {reward.dare.streak}-day streak</span>}
+                {reward.couple && <span className="reward-couple">+{reward.couple.xp} Couple XP</span>}
               </span>
             )}
+            {highlights.length > 0 && <details className="match-highlights">
+              <summary>Last {highlights.length} match highlights</summary>
+              <ol>{highlights.map((h) => <li key={h.rev}>{highlightText(h.log, names)}</li>)}</ol>
+              <button type="button" className="text-link" onClick={() => void shareHighlights()}>Share highlights</button>
+            </details>}
             <button type="button" className="primary-btn" onClick={() => playGame(def.id, opponents, session.convId.startsWith("dm:") ? session.convId : undefined)}>
               <RefreshCw size={16} /> Rematch
             </button>
+            <button type="button" className="text-link" onClick={() => setResultOpen(false)}>View final board</button>
+          </div>
           </div>
         )}
       </div>

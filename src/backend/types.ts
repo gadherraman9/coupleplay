@@ -19,13 +19,17 @@ export interface User {
   xp?: number;
   wins?: number;
   winStreak?: number;
+  bestWinStreak?: number;
+  draws?: number;
   // Daily login reward: last day claimed and how many days in a row.
   rewardDay?: string;
   rewardStreak?: number;
   // Today's mission progress (see progress.ts).
-  // Played / won per game id, for each game's page and leaderboard.
-  gameStats?: Record<string, { played: number; won: number }>;
+  gameStats?: Record<string, GameStats>;
   missions?: { day: string; played: number; won: number; cards: number; board: number; claimed: string[] };
+  // Permanent, compact deduplication ledger. Never prune paid session ids:
+  // doing so would let an old session pay again. No game state is copied.
+  gameReceipts?: Record<string, GameRewardReceipt>;
   suspended?: boolean;
   createdAt: number;
 }
@@ -81,6 +85,57 @@ export interface Room {
   topic: string;
 }
 
+export interface GameStats {
+  played: number;
+  won: number;
+  draws?: number;
+  winStreak?: number;
+  bestWinStreak?: number;
+  bestScore?: number;
+}
+
+export interface GameHighlight {
+  rev: number;
+  at: number;
+  // Unresolved `playerId|text` / `@[playerId]` tokens, for the viewer's UI.
+  log: string;
+}
+
+export type GameOutcome = "win" | "loss" | "draw" | "completed";
+
+export interface DareReward {
+  day: string;
+  streak: number;
+  hearts: number;
+  xp: number;
+  bonus: number;
+}
+
+export interface GameRewardReceipt {
+  sessionId: string;
+  userId: string;
+  game: string;
+  players: string[];
+  winner: string | null; // "draw" is the only draw sentinel.
+  outcome: GameOutcome;
+  completedAt: number;
+  recordedAt: number;
+  day: string; // UTC completion date, not claim date.
+  hearts: number; // Total, including all bonuses below.
+  xp: number; // Total, including dare XP.
+  completionHearts: number;
+  winHearts: number;
+  bonus: number; // Capped win-streak hearts.
+  streak: number;
+  levelUp: number; // New level, or 0.
+  levelReward: number;
+  dare?: DareReward;
+  // Eligibility snapshot: reciprocal humans present in this session's roster.
+  // One partner's receipt is enough; never write the other profile.
+  couple?: { players: [string, string]; xp: number };
+  highlights: GameHighlight[];
+}
+
 export type GameStatus = "waiting" | "playing" | "finished";
 
 export interface GameSession {
@@ -95,6 +150,9 @@ export interface GameSession {
   rev: number;
   createdAt: number;
   updatedAt: number;
+  finishedAt?: number;
+  highlights?: GameHighlight[];
+  playedBy?: string[];
 }
 
 export interface QueueEntry {

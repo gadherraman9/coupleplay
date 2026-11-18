@@ -58,66 +58,49 @@ export function arrange(cards: PCard[], wild: number): Arrangement {
   const n = cards.length;
   type Opt = { dead: number; pure: number; seqs: number; melds: { kind: MeldKind; cards: number[] }[]; deadIdx: number[] };
   const memo = new Map<number, Map<string, Opt>>();
-  const jokerIdx = cards.flatMap((c, i) => (isJoker(c, wild) ? [i] : []));
   const keyOf = (o: Opt) => `${Math.min(1, o.pure)}${Math.min(2, o.seqs)}`;
   const keep = (map: Map<string, Opt>, o: Opt) => {
     const k = keyOf(o);
     const cur = map.get(k);
-    if (!cur || o.dead < cur.dead) map.set(k, o);
+    if (!cur || o.dead < cur.dead || (o.dead === cur.dead && o.deadIdx.length < cur.deadIdx.length)) map.set(k, o);
   };
 
-  const melds = (i: number, mask: number) => {
-    const c = cards[i];
-    const out: { kind: MeldKind; mask: number; cards: number[] }[] = [];
-    const jokers = jokerIdx.filter((j) => j !== i && mask & (1 << j));
-    // Sets: same rank, different suits.
-    const bySuit = new Map<string, number>();
-    cards.forEach((d, j) => {
-      if (j !== i && mask & (1 << j) && d.r === c.r && d.s !== c.s && !bySuit.has(d.s) && (c.r === wild || !isJoker(d, wild))) bySuit.set(d.s, j);
+  type Meld = { kind: MeldKind; mask: number; cards: number[] };
+  const byCard: Meld[][] = cards.map(() => []);
+  let bestPure: Meld | undefined;
+  let purePoints = -1;
+  const fitsSequence = (fixed: PCard[], size: number) => {
+    if (size > 13) return false;
+    if (!fixed.length) return true;
+    if (fixed.some((c) => c.s !== fixed[0].s)) return false;
+    return [false, true].some((aceLow) => {
+      const ranks = fixed.map((c) => aceLow && c.r === 14 ? 1 : c.r);
+      return new Set(ranks).size === ranks.length && Math.max(...ranks) - Math.min(...ranks) < size;
     });
-    const others = [...bySuit.values()];
-    for (let pick = 0; pick < 1 << others.length; pick += 1) {
-      const chosen = [i, ...others.filter((_, k) => pick & (1 << k))];
-      for (let j = 0; j <= 2; j += 1) {
-        const size = chosen.length + j;
-        if (size < 3 || size > 4 || j > jokers.length) continue;
-        const all = [...chosen, ...jokers.slice(0, j)];
-        out.push({ kind: "set", mask: all.reduce((m, x) => m | (1 << x), 0), cards: all });
-      }
-    }
-    // Sequences in c's suit (ace low or high).
-    const values = c.r === 14 ? [1, 14] : [c.r];
-    for (const v of values) {
-      for (let start = Math.max(1, v - 12); start <= v; start += 1) {
-        for (let len = Math.max(3, v - start + 1); start + len - 1 <= 14 && len <= 13; len += 1) {
-          let used = 1 << i;
-          let jokersUsed = 0;
-          const list = [i];
-          let ok = true;
-          for (let r = start; r < start + len; r += 1) {
-            if (r === v) continue;
-            const rank = r === 1 ? 14 : r;
-            const j = cards.findIndex((d, x) => !(used & (1 << x)) && mask & (1 << x) && d.s === c.s && d.r === rank);
-            if (j >= 0) {
-              used |= 1 << j;
-              list.push(j);
-            } else {
-              const joker = jokers.find((x) => !(used & (1 << x)));
-              if (joker === undefined) {
-                ok = false;
-                break;
-              }
-              used |= 1 << joker;
-              list.push(joker);
-              jokersUsed += 1;
-            }
-          }
-          if (ok) out.push({ kind: jokersUsed ? "seq" : "pure", mask: used, cards: list });
-        }
-      }
-    }
-    return out;
   };
+
+  // Enumerate physical-card subsets, not the first matching card/joker. This
+  // preserves every feasible assignment, including duplicate deck copies and
+  // a wild-rank card reserved for its natural place in a pure sequence.
+  for (let mask = 1; mask < 1 << n; mask += 1) {
+    const indices = cards.flatMap((_, i) => mask & (1 << i) ? [i] : []);
+    if (indices.length < 3) continue;
+    const group = indices.map((i) => cards[i]);
+    const fixed = group.filter((c) => !isJoker(c, wild));
+    const kinds: MeldKind[] = [];
+    if (group.every((c) => c.r !== 0) && fitsSequence(group, group.length)) kinds.push("pure");
+    else if (fixed.length < group.length && fitsSequence(fixed, group.length)) kinds.push("seq");
+    if (group.length <= 4 && fixed.every((c) => c.r === fixed[0].r) && new Set(fixed.map((c) => c.s)).size === fixed.length) kinds.push("set");
+    for (const kind of kinds) {
+      const meld: Meld = { kind, mask, cards: indices };
+      for (const i of indices) byCard[i].push(meld);
+      const value = group.reduce((sum, c) => sum + points(c, wild), 0);
+      if (kind === "pure" && value > purePoints) {
+        bestPure = meld;
+        purePoints = value;
+      }
+    }
+  }
 
   const rec = (mask: number): Map<string, Opt> => {
     const hit = memo.get(mask);
@@ -125,7 +108,7 @@ export function arrange(cards: PCard[], wild: number): Arrangement {
     const result = new Map<string, Opt>();
     let i = -1;
     for (let x = 0; x < n; x += 1) {
-      if (mask & (1 << x) && !isJoker(cards[x], wild)) {
+      if (mask & (1 << x)) {
         i = x;
         break;
       }
@@ -136,7 +119,8 @@ export function arrange(cards: PCard[], wild: number): Arrangement {
       return result;
     }
     for (const o of rec(mask & ~(1 << i)).values()) keep(result, { ...o, dead: o.dead + points(cards[i], wild), deadIdx: [...o.deadIdx, i] });
-    for (const m of melds(i, mask)) {
+    for (const m of byCard[i]) {
+      if ((mask & m.mask) !== m.mask) continue;
       for (const o of rec(mask & ~m.mask).values()) {
         keep(result, {
           dead: o.dead,
@@ -152,22 +136,21 @@ export function arrange(cards: PCard[], wild: number): Arrangement {
   };
 
   const all = rec((1 << n) - 1);
-  const withPure = [...all.values()].filter((o) => o.pure >= 1);
   const full = all.get("12");
-  const fallback: Opt = withPure.sort((a, b) => a.dead - b.dead)[0];
-  const best = full && (!fallback || full.dead <= fallback.dead + 0) ? full : fallback;
-  if (!best) {
-    // No pure sequence: every card counts, but still show the groups found.
-    const total = cards.reduce((s, c) => s + points(c, wild), 0);
-    const any = [...all.values()].sort((a, b) => a.dead - b.dead)[0];
-    const placed = new Set(any?.melds.flatMap((m) => m.cards) ?? []);
-    return { melds: any?.melds ?? [], dead: cards.map((_, i) => i).filter((i) => !placed.has(i)), points: Math.min(MAX_POINTS, total), valid: false };
+  const totalPoints = cards.reduce((sum, c) => sum + points(c, wild), 0);
+  // With fewer than two sequences, only the pure sequence is exempt. Choose
+  // it by protected points, not by leftover points after ineligible sets.
+  const purePenalty = bestPure ? totalPoints - purePoints : totalPoints;
+  if (full && full.dead <= purePenalty) {
+    return { melds: full.melds, dead: full.deadIdx, points: Math.min(MAX_POINTS, full.dead), valid: full.deadIdx.length === 0 };
   }
-  const placed = new Set(best.melds.flatMap((m) => m.cards));
-  const dead = cards.map((_, i) => i).filter((i) => !placed.has(i));
-  // Only full structure (2 sequences, one pure) lets sets count.
-  const pointsLeft = full === best ? best.dead : dead.reduce((s, i) => s + points(cards[i], wild), 0);
-  return { melds: best.melds, dead, points: Math.min(MAX_POINTS, pointsLeft), valid: full === best && best.dead === 0 };
+  if (bestPure) {
+    const dead = cards.map((_, i) => i).filter((i) => !(bestPure.mask & (1 << i)));
+    return { melds: [{ kind: "pure", cards: bestPure.cards }], dead, points: Math.min(MAX_POINTS, purePenalty), valid: false };
+  }
+  // No pure sequence: every card counts, but still show the groups found.
+  const any = [...all.values()].sort((a, b) => a.dead - b.dead)[0];
+  return { melds: any.melds, dead: any.deadIdx, points: Math.min(MAX_POINTS, totalPoints), valid: false };
 }
 
 function deal(prev: State, dealNo: number, starter: number): State {
@@ -213,8 +196,10 @@ function endDeal(state: State, seat: number, valid: boolean): State {
   if (state.deal >= DEALS) {
     const totals = state.players.map((_, i) => total(next, i));
     const low = Math.min(...totals);
-    const w = totals.indexOf(low);
-    return { ...next, winner: state.players[w], log: `${state.players[w]}|wins with just ${low} points! 🏆` };
+    const leaders = state.players.filter((_, i) => totals[i] === low);
+    return leaders.length > 1
+      ? { ...next, winner: "draw", log: `Draw — ${leaders.map((p) => `@[${p}]`).join(" and ")} tied with ${low} points` }
+      : { ...next, winner: leaders[0], log: `${leaders[0]}|wins with just ${low} points!` };
   }
   return next;
 }

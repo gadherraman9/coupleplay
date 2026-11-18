@@ -100,6 +100,7 @@ function netWorth(state: State, player: string) {
 }
 
 function canUpgrade(state: State, player: string, index: number) {
+  if (!Number.isInteger(index) || index < 0 || index >= BOARD.length) return false;
   const square = BOARD[index];
   const prop = state.props[index];
   return (

@@ -27,6 +27,7 @@ interface State {
   best: number;
   lastScore: number | null;
   plays: number;
+  player: string;
 }
 
 type Action = { type: "over"; score: number };
@@ -43,7 +44,7 @@ function makePlatform(y: number, level: number): Platform {
   };
 }
 
-function BounceView({ state, act }: GameViewProps<State, Action>) {
+function BounceView({ state, act, finished }: GameViewProps<State, Action>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const input = useRef({ left: false, right: false });
   const [running, setRunning] = useState(false);
@@ -229,9 +230,8 @@ function BounceView({ state, act }: GameViewProps<State, Action>) {
                 <span>Hop up the platforms. Yellow ones launch you, grey ones crumble. Grab hearts for +25.</span>
               </>
             )}
-            <button type="button" className="primary-btn" onClick={start}>
-              {over !== null ? "Play again" : "Start"}
-            </button>
+            {!finished && <button type="button" className="primary-btn" onClick={start}>Start</button>}
+            {finished && <span>Open the result to start a new run.</span>}
           </div>
         )}
       </div>
@@ -266,11 +266,11 @@ export const bounceGame: GameDef<State, Action> = {
   minPlayers: 1,
   maxPlayers: 1,
   soloOnly: true,
-  init: () => ({ best: 0, lastScore: null, plays: 0 }),
-  apply: (state, action) =>
-    action.type === "over"
-      ? { best: Math.max(state.best, action.score), lastScore: action.score, plays: state.plays + 1 }
+  init: (players, host) => ({ best: host?.gameStats?.bounce?.bestScore ?? 0, lastScore: null, plays: 0, player: players[0] }),
+  apply: (state, action, by) =>
+    action.type === "over" && by === state.player && state.lastScore === null && Number.isFinite(action.score) && action.score >= 0
+      ? { ...state, best: Math.max(state.best, action.score), lastScore: action.score, plays: state.plays + 1 }
       : state,
-  winner: () => null,
+  winner: (state) => state.lastScore === null ? null : state.player,
   View: BounceView,
 };

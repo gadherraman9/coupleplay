@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node tests/run.mjs",
+    "test:ui": "playwright test tests/mobile.spec.mjs --workers=1 --reporter=line"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
@@ -15,9 +17,11 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.28.2",
     "typescript": "~5.6.2",
     "vite": "^6.0.3"
   }

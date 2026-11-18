@@ -12,7 +12,9 @@ import type {
   Report,
   User,
 } from "./types";
-import { BOARD_GAMES, CARD_GAMES, DAILY_REWARDS, dayKey, LEVEL_REWARD, levelOf, MISSIONS, missionState, nextRewardIndex, streakBonus, WIN_HEARTS, XP_PLAY, XP_WIN } from "../progress";
+import { DAILY_REWARDS, dayKey, MISSIONS, missionState, nextRewardIndex } from "../progress";
+import { finalizeGameUpdate, recordGameProgress } from "../coupleProgress";
+import { APP_THEMES, CHAT_THEMES } from "../themes";
 
 const DB_KEY = "cp_db_v1";
 const SESSION_KEY = "cp_session";
@@ -84,6 +86,8 @@ if (typeof window !== "undefined" && !REMOTE) {
 }
 
 export function mutate<T>(fn: (db: DB) => T): T {
+  // Another tab can write before its storage event reaches this tab.
+  if (!REMOTE) cache = null;
   const before = read();
   const db = structuredClone(before);
   const result = fn(db);
@@ -651,39 +655,19 @@ export const api = {
     });
   },
 
-  // Called once per finished game for each human player: XP, wins, win
-  // streak, mission progress and hearts.
-  recordGame(me: string, game: string, won: boolean, solo: boolean) {
-    return mutate((db) => {
-      const user = db.users[me];
-      const before = levelOf(user.xp);
-      user.xp = (user.xp ?? 0) + XP_PLAY + (won ? XP_WIN : 0);
-      const m = missionState(user);
-      m.played += 1;
-      if (CARD_GAMES.has(game)) m.cards += 1;
-      if (BOARD_GAMES.has(game)) m.board += 1;
-      let hearts = 0;
-      let bonus = 0;
-      if (!solo) {
-        if (won) {
-          m.won += 1;
-          user.wins = (user.wins ?? 0) + 1;
-          user.winStreak = (user.winStreak ?? 0) + 1;
-          bonus = streakBonus(user.winStreak);
-          hearts += WIN_HEARTS + bonus;
-        } else {
-          user.winStreak = 0;
-        }
-      }
-      user.missions = m;
-      const stats = user.gameStats?.[game] ?? { played: 0, won: 0 };
-      user.gameStats = { ...user.gameStats, [game]: { played: stats.played + 1, won: stats.won + (won && !solo ? 1 : 0) } };
-      const after = levelOf(user.xp);
-      const levelReward = after > before ? LEVEL_REWARD(after) : 0;
-      hearts += levelReward;
-      user.hearts += hearts;
-      return { hearts, bonus, streak: user.winStreak ?? 0, levelUp: after > before ? after : 0, levelReward };
-    });
+  // Client-owned receipts are not an atomic server ledger.
+  async recordGame(me: string, sessionId: string) {
+    const claim = () => {
+      if (getSessionId() !== me) throw new Error("Claim rewards from your own account");
+      return mutate((db) => {
+        const { user, receipt } = recordGameProgress(db, me, sessionId);
+        db.users[me] = user;
+        return structuredClone(receipt);
+      });
+    };
+    return !REMOTE && navigator.locks
+      ? navigator.locks.request(`${DB_KEY}:rewards`, claim)
+      : claim();
   },
 
   claimMission(me: string, id: string) {
@@ -706,11 +690,16 @@ export const api = {
   },
 
   buyTheme(me: string, themeId: string, price: number) {
+    // App/chat catalogs are data-only. skins.ts imports context/store, so keep
+    // its existing caller contract without introducing that cycle here.
+    const catalog = [...APP_THEMES, ...CHAT_THEMES].find((theme) => theme.id === themeId);
+    const cost = catalog?.price ?? price;
+    if (!Number.isFinite(cost) || cost < 0) throw new Error("Invalid theme price");
     mutate((db) => {
       const user = db.users[me];
       if (user.ownedThemes.includes(themeId)) return;
-      if (user.hearts < price) throw new Error(`You need ${price - user.hearts} more hearts`);
-      user.hearts -= price;
+      if (user.hearts < cost) throw new Error(`You need ${cost - user.hearts} more hearts`);
+      user.hearts -= cost;
       user.ownedThemes.push(themeId);
     });
   },
@@ -801,11 +790,13 @@ export const api = {
 
   updateGame(id: string, patch: (session: GameSession) => void) {
     return mutate((db) => {
-      const session = db.games.find((g) => g.id === id);
-      if (!session) throw new Error("Game not found");
-      patch(session);
-      session.rev += 1;
-      session.updatedAt = Date.now();
+      const index = db.games.findIndex((g) => g.id === id);
+      if (index < 0) throw new Error("Game not found");
+      const before = db.games[index];
+      const patched = structuredClone(before);
+      patch(patched);
+      const session = finalizeGameUpdate(before, patched);
+      db.games[index] = session;
       return session;
     });
   },

@@ -179,13 +179,13 @@ export const fourInRowGame: GameDef<State, Action> = {
     winner: null,
   }),
   apply: (state, action, by) => {
-    if (state.winner) return state;
+    const seat = state.players.indexOf(by);
+    if (state.winner || seat < 0) return state;
     if (action.type === "next") {
       if (!state.drawn || action.round !== state.round) return state;
       return { ...state, board: empty(), drawn: false, lastDrop: null, line: null, round: state.round + 1, turn: 1 - state.turn, log: "New round!" };
     }
-    const seat = state.players.indexOf(by);
-    if (seat !== state.turn || state.drawn) return state;
+    if (seat !== state.turn || state.drawn || action.type !== "drop" || !Number.isInteger(action.col) || action.col < 0 || action.col >= COLS) return state;
     const row = landingRow(state.board, action.col);
     if (row < 0) return state;
     const board = [...state.board];

@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import type { GameStats } from "../backend/types";
 
 export interface GameViewProps<S, A> {
   state: S;
@@ -25,7 +26,7 @@ export interface GameDef<S = any, A = any> {
   // Card games: the table uses the viewer's card skin felt.
   felt?: boolean;
   // `host` is the player starting the game (some games use their skins).
-  init: (players: string[], host?: { skins?: Partial<Record<string, string>> }) => S;
+  init: (players: string[], host?: { skins?: Partial<Record<string, string>>; gameStats?: Record<string, GameStats> }) => S;
   apply: (state: S, action: A, by: string) => S;
   winner: (state: S) => string | null;
   currentPlayer?: (state: S) => string | null;

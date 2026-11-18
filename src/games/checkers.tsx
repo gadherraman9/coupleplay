@@ -189,7 +189,7 @@ export const checkersGame: GameDef<State, Action> = {
   }),
   apply: (state, action, by) => {
     const seat = state.players.indexOf(by);
-    if (state.winner || seat !== state.turn) return state;
+    if (state.winner || seat !== state.turn || action.type !== "move") return state;
     const move = legalMoves(state).find((m) => m.from === action.from && m.to === action.to);
     if (!move) return state;
     const board = [...state.board];

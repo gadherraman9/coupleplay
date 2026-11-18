@@ -89,7 +89,7 @@ export function legalCards(hand: PCard[], trick: Played[]) {
   if (spades.length) {
     const high = Math.max(0, ...trick.filter((p) => p.card.s === "S").map((p) => p.card.r));
     const over = spades.filter((c) => c.r > high);
-    return over.length ? over : hand;
+    return over.length ? over : spades;
   }
   return hand;
 }
@@ -371,7 +371,10 @@ export const callBreakGame: GameDef<State, Action> = {
     if (state.round >= ROUNDS) {
       const totals = state.players.map((_, s) => total(ended, s));
       const best = Math.max(...totals);
-      return { ...ended, winner: state.players[totals.indexOf(best)], log: `${state.players[totals.indexOf(best)]}|wins with ${best} points! 🏆` };
+      const leaders = state.players.filter((_, s) => totals[s] === best);
+      return leaders.length > 1
+        ? { ...ended, winner: "draw", log: `Draw — ${leaders.map((p) => `@[${p}]`).join(" and ")} tied with ${best} points` }
+        : { ...ended, winner: leaders[0], log: `${leaders[0]}|wins with ${best} points!` };
     }
     return ended;
   },

@@ -1,7 +1,7 @@
 // A standard deck shared by Poker, Call Break and Rummy, plus the card
 // pictures. Card backs and table felt come from the viewer's card skin.
 import type { CSSProperties } from "react";
-import { skinArt, useSkin, useTable } from "../skins";
+import { isCardPhoto, skinArt, useSkin, useTable } from "../skins";
 import type { Skin } from "../skins";
 import { useSoundTheme } from "./music";
 import { shuffle } from "./types";
@@ -91,8 +91,9 @@ export function PlayingCard({
   );
 }
 
-// Card back look: its picture, or the CSS pattern for colour backs.
+// Local photos take precedence over catalog art; never accept arbitrary URLs.
 export function backStyle(skin: Skin): CSSProperties | undefined {
+  if (isCardPhoto(skin.customBack)) return { backgroundImage: `url("${skin.customBack}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" };
   const art = skinArt(skin.back);
   if (art) return { backgroundImage: `url(${art})`, backgroundSize: "cover" };
   if (skin.backCss) return { background: skin.backCss };

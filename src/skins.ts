@@ -1,6 +1,7 @@
 // Game skins: board looks for Ludo and Snakes & Ladders, dice, goti (tokens),
 // card backs and table colours. Artwork lives in src/assets/skins (made with
 // Gemini); a skin whose picture is missing falls back to its colours.
+import { useCallback, useSyncExternalStore } from "react";
 import { useApp } from "./context";
 
 export type SkinKind = "ludo" | "snakes" | "dice" | "token" | "cards" | "table";
@@ -54,6 +55,8 @@ export interface Skin {
   emoji?: Record<TokenColor, string>;
   // Card back drawn in CSS when there's no picture.
   backCss?: string;
+  // Validated local-device photo only. Never persisted in User / profile data.
+  customBack?: string;
 }
 
 const files = import.meta.glob("./assets/skins/*.{webp,png,jpg}", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
@@ -152,6 +155,9 @@ export const SKINS: Skin[] = [
   { id: "back-black", kind: "cards", name: "Black Gold", price: 80, blurb: "Black with gold lines", backCss: diamondBack("#27272a", "#09090b", "rgba(250,204,21,.45)") },
   { id: "back-love", kind: "cards", name: "Love Pink", price: 80, blurb: "Pink with white dots", backCss: dotBack("#fb7185", "#be185d", "rgba(255,255,255,.7)") },
   { id: "back-rainbow", kind: "cards", name: "Rainbow", price: 80, blurb: "All the colours", backCss: "linear-gradient(135deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #a855f7)" },
+  { id: "back-spring", kind: "cards", name: "Spring Petals", price: 80, blurb: "Soft blossoms on sage", backCss: "radial-gradient(ellipse at 35% 35%, #fbcfe8 0 3px, transparent 4px) 0 0 / 18px 22px, radial-gradient(ellipse at 65% 65%, #fce7f3 0 3px, transparent 4px) 0 0 / 18px 22px, linear-gradient(145deg, #527b66, #234838)" },
+  { id: "back-diwali", kind: "cards", name: "Diwali Glow", price: 80, blurb: "Golden lattice and warm lamplight", backCss: diamondBack("#923a3a", "#431b32", "rgba(253,211,125,.65)") },
+  { id: "back-winter", kind: "cards", name: "Winter Stars", price: 80, blurb: "Frosty starlight on midnight blue", backCss: dotBack("#315b7b", "#142d46", "rgba(224,242,254,.8)") },
 
   // ---------- Table colours ----------
   { id: "table-green", kind: "table", name: "Casino Green", price: 0, blurb: "Classic green felt", felt: "felt-green.webp", tint: "#17663a", sound: "lounge" },
@@ -165,6 +171,9 @@ export const SKINS: Skin[] = [
   { id: "table-orange", kind: "table", name: "Sunset", price: 60, blurb: "Warm orange felt", tint: "#9a3412", bg: felt("#ea580c"), sound: "desert" },
   { id: "table-grey", kind: "table", name: "Slate", price: 60, blurb: "Modern grey", tint: "#334155", bg: felt("#64748b"), sound: "lounge" },
   { id: "table-space", kind: "table", name: "Galaxy", price: 120, blurb: "Play among the stars", tint: "#1e1b4b", bg: "radial-gradient(circle at 20% 30%, #fff 0 1px, transparent 2px) 0 0 / 60px 60px, radial-gradient(circle at 70% 60%, #c4b5fd 0 1px, transparent 2px) 0 0 / 90px 90px, radial-gradient(ellipse at 50% 40%, #4c1d95 0%, #0f0a1e 100%)", sound: "space" },
+  { id: "table-spring", kind: "table", name: "Spring Garden", price: 80, blurb: "A quiet sage-green garden", tint: "#294e3c", bg: felt("#63876b"), sound: "lounge" },
+  { id: "table-diwali", kind: "table", name: "Diwali Velvet", price: 80, blurb: "Plum velvet with an amber glow", tint: "#4b2038", bg: "radial-gradient(ellipse at 50% 35%, #915447, #54263d 60%, #281324)", sound: "royal" },
+  { id: "table-winter", kind: "table", name: "Winter Lodge", price: 80, blurb: "Deep blue felt for cosy games", tint: "#243c53", bg: felt("#4f718b"), sound: "snow" },
 ];
 
 export const skinById = (id?: string) => SKINS.find((s) => s.id === id);
@@ -178,10 +187,82 @@ export function pickedSkin(skins: Partial<Record<string, string>> | undefined, k
   return skin && skin.kind === kind ? skin : defaultSkin(kind);
 }
 
+// Photos have their own per-user device store, completely separate from the
+// backend snapshot. Limit the entire ASCII data URL, including base64 overhead.
+export const MAX_CARD_PHOTO_BYTES = 150 * 1024;
+const PHOTO_PREFIX = "cp_card_back_v1:";
+const photoListeners = new Set<() => void>();
+const photoCache = new Map<string, { raw: string | null; photo: string | undefined }>();
+
+export function isCardPhoto(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > MAX_CARD_PHOTO_BYTES) return false;
+  const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match || match[2].length % 4 !== 0) return false;
+  try {
+    // Check the actual format too, not just a claimed MIME type. No SVG, remote
+    // URL, quote or CSS syntax can reach the card's background image.
+    const bytes = atob(match[2]);
+    if (match[1] === "jpeg") return bytes.startsWith("\xff\xd8\xff");
+    if (match[1] === "png") return bytes.startsWith("\x89PNG\r\n\x1a\n");
+    return bytes.startsWith("RIFF") && bytes.slice(8, 12) === "WEBP";
+  } catch {
+    return false;
+  }
+}
+
+export function readCustomCardBack(userId: string): string | undefined {
+  try {
+    const raw = window.localStorage.getItem(PHOTO_PREFIX + userId);
+    const cached = photoCache.get(userId);
+    if (cached?.raw === raw) return cached.photo;
+    const photo = isCardPhoto(raw) ? raw : undefined;
+    photoCache.set(userId, { raw, photo });
+    return photo;
+  } catch {
+    return undefined;
+  }
+}
+
+const emitPhotos = () => photoListeners.forEach((listener) => listener());
+const onPhotoStorage = (event: StorageEvent) => {
+  if (event.key === null || event.key.startsWith(PHOTO_PREFIX)) emitPhotos();
+};
+
+export function subscribeCustomCardBack(listener: () => void) {
+  if (!photoListeners.size && typeof window !== "undefined") window.addEventListener("storage", onPhotoStorage);
+  photoListeners.add(listener);
+  return () => {
+    photoListeners.delete(listener);
+    if (!photoListeners.size && typeof window !== "undefined") window.removeEventListener("storage", onPhotoStorage);
+  };
+}
+
+export function saveCustomCardBack(userId: string, photo?: string) {
+  if (!userId) throw new Error("Sign in to choose a photo back.");
+  if (photo !== undefined && !isCardPhoto(photo)) throw new Error("Choose a valid JPEG, PNG or WebP photo under 150 KB after resizing.");
+  try {
+    // A failed setItem leaves the old value intact. Notify subscribers only
+    // after a successful write, so a quota error never replaces their photo.
+    if (photo === undefined) window.localStorage.removeItem(PHOTO_PREFIX + userId);
+    else window.localStorage.setItem(PHOTO_PREFIX + userId, photo);
+  } catch {
+    throw new Error("Couldn't save the photo setting on this device. Storage may be full or blocked; your previous back is unchanged.");
+  }
+  emitPhotos();
+}
+
+const noPhoto = () => undefined;
+export function useCustomCardBack(userId?: string) {
+  const snapshot = useCallback(() => userId ? readCustomCardBack(userId) : undefined, [userId]);
+  return useSyncExternalStore(subscribeCustomCardBack, snapshot, noPhoto);
+}
+
 // The skin the person looking at the screen picked (each player sees their own).
 export function useSkin(kind: SkinKind): Skin {
   const { me } = useApp();
-  return pickedSkin(me.skins, kind);
+  const photo = useCustomCardBack(kind === "cards" ? me.id : undefined);
+  const skin = pickedSkin(me.skins, kind);
+  return photo ? { ...skin, customBack: photo } : skin;
 }
 
 // Table look for card games: the picked table colour, or (for people who

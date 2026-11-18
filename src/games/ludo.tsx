@@ -375,7 +375,7 @@ export const ludoGame: GameDef<State, Action> = {
       }
       return { ...next, phase: "move", log: `${by}|rolled ${dice}` };
     }
-    if (state.phase !== "move" || state.dice === null) return state;
+    if (action.type !== "move" || state.phase !== "move" || state.dice === null) return state;
     const dice = state.dice;
     const seat = state.seats[state.players.indexOf(by)];
     const mine = [...state.tokens[by]];

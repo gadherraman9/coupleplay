@@ -122,7 +122,7 @@ export default function App() {
       const def = gameById(gameId);
       if (!def || !me) return;
       if (def.soloOnly) {
-        const existing = getDB().games.find((g) => g.game === gameId && g.players.length === 1 && g.players[0] === me.id);
+        const existing = getDB().games.find((g) => g.game === gameId && g.status === "playing" && g.players.length === 1 && g.players[0] === me.id);
         if (existing) {
           setGameSession(existing.id);
           return;
@@ -201,7 +201,7 @@ export default function App() {
       ) : (
         <AppContext.Provider value={ctx}>
           <div className="app">
-            <BottomNav tab={overlay ? null : tab} onChange={switchTab} badges={badges} hiddenOnMobile={Boolean(overlay)} />
+            <BottomNav tab={overlay ? null : tab} onChange={switchTab} badges={badges} hiddenOnMobile={Boolean(overlay || gameSession || partyGame)} />
             <main className="app-main">
               {overlay?.kind === "chat" ? (
                 <ChatScreen key={overlay.convId} convId={overlay.convId} onBack={() => setOverlay(null)} />

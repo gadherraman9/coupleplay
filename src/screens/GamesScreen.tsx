@@ -1,15 +1,29 @@
+import { useState } from "react";
 import { ChevronRight, Lock, Users } from "lucide-react";
 import { GAMES } from "../data";
 import type { GameId } from "../data";
 import { GAME_ICONS } from "../gameIcons";
-import { ONLINE_GAMES } from "../games/registry";
+import { ONLINE_GAMES, gameById } from "../games/registry";
+import { useApp } from "../context";
+import { dailyDareState } from "../progress";
 
 interface GamesScreenProps {
   onPickGame: (gameId: string) => void;
   onOpenParty: (game: GameId) => void;
 }
 
+const MOODS = [
+  { id: "all", label: "All games", games: [] as string[] },
+  { id: "chill", label: "Chill", games: ["rummy", "snakes", "dots", "bounce"] },
+  { id: "competitive", label: "Competitive", games: ["chess", "callbreak", "pool", "poker", "checkers"] },
+  { id: "quick", label: "Quick break", games: ["tictactoe", "fourinrow", "cards", "ludo", "tycoon"] },
+];
+
 export default function GamesScreen({ onPickGame, onOpenParty }: GamesScreenProps) {
+  const { me } = useApp();
+  const dare = dailyDareState(me);
+  const featured = gameById(dare.gameId)!;
+  const [mood, setMood] = useState(MOODS[0]);
   return (
     <div className="screen games-screen">
       <header className="page-header">
@@ -18,8 +32,18 @@ export default function GamesScreen({ onPickGame, onOpenParty }: GamesScreenProp
         <p className="page-sub">Chat while you play — tap the bubble inside any game.</p>
       </header>
 
+      <section className={`daily-dare card ${dare.completed ? "is-complete" : ""}`} aria-label="Daily challenge">
+        <div><p className="eyebrow">Today's challenge · resets at midnight UTC</p>
+          <h3>{dare.completed ? "Challenge complete" : `Finish a game of ${featured.title}`}</h3>
+          <p>+{dare.hearts} hearts · +{dare.xp} XP · {dare.streak}-day challenge streak</p>
+        </div>
+        <button type="button" className="primary-btn" onClick={() => onPickGame(featured.id)}>{dare.completed ? "Play again" : "Take the challenge"}</button>
+      </section>
+      <div className="mood-picker" role="group" aria-label="Choose your mood">
+        {MOODS.map(option => <button type="button" key={option.id} aria-pressed={mood.id === option.id} onClick={() => setMood(option)}>{option.label}</button>)}
+      </div>
       <div className="game-grid">
-        {ONLINE_GAMES.map((game) => (
+        {ONLINE_GAMES.filter(game => mood.id === "all" || mood.games.includes(game.id)).map((game) => (
           <button key={game.id} type="button" className={`game-card ${game.className}`} onClick={() => onPickGame(game.id)}>
             <span className="game-card-icon game-card-emoji">{game.emoji}</span>
             <span className="game-card-body">

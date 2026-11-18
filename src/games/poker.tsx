@@ -44,6 +44,7 @@ interface State {
   turn: number;
   street: Street;
   toAct: number[];
+  lastActedBet: (number | null)[];
   currentBet: number;
   minRaise: number;
   hand: number;
@@ -117,6 +118,13 @@ const inHand = (s: Seat) => !s.out && !s.folded;
 const canAct = (s: Seat) => inHand(s) && !s.allIn;
 const pot = (state: State) => state.seats.reduce((sum, s) => sum + s.total, 0);
 
+function canRaise(state: State, seat: number) {
+  const lastBet = state.lastActedBet?.[seat];
+  // Owing a response is not raise permission: short all-ins must add up to
+  // a full raise since this player's own last action to reopen betting.
+  return lastBet == null || state.currentBet - lastBet >= state.minRaise;
+}
+
 function nextSeat(state: State, from: number, ok: (s: Seat, i: number) => boolean) {
   const n = state.seats.length;
   for (let k = 1; k <= n; k += 1) {
@@ -169,6 +177,7 @@ function startHand(prev: State, first = false): State {
   }
   state.currentBet = state.blinds[1];
   state.minRaise = state.blinds[1];
+  state.lastActedBet = state.seats.map(() => null);
   state.toAct = state.seats.flatMap((s, i) => (canAct(s) ? [i] : []));
   state.turn = nextSeat(state, bb, (_s, i) => state.toAct.includes(i));
   state.log = `Hand ${state.hand} · blinds ${state.blinds[0]}/${state.blinds[1]}`;
@@ -230,8 +239,11 @@ function finishHand(state: State, results: Result[], reveal: boolean): State {
   const alive = state.seats.filter((s) => s.chips > 0);
   if (alive.length === 1 || state.hand >= MAX_HANDS) {
     const most = Math.max(...state.seats.map((s) => s.chips));
-    state.winner = state.players[state.seats.findIndex((s) => s.chips === most)];
-    state.log += alive.length === 1 ? " — and took every chip! 🏆" : ` — last hand! Most chips wins 🏆`;
+    const leaders = state.players.filter((_, i) => state.seats[i].chips === most);
+    state.winner = leaders.length > 1 ? "draw" : leaders[0];
+    state.log += leaders.length > 1
+      ? ` — draw! ${leaders.map((p) => `@[${p}]`).join(" and ")} tied with ${most} chips`
+      : alive.length === 1 ? " — and took every chip!" : ` — last hand! @[${leaders[0]}] wins with ${most} chips`;
   }
   return state;
 }
@@ -243,6 +255,7 @@ function advance(state: State): State {
     });
     state.currentBet = 0;
     state.minRaise = state.blinds[1];
+    state.lastActedBet = state.seats.map(() => null);
     state.said = {};
     if (state.street === "river") {
       return finishHand(state, payout(state), true);
@@ -282,6 +295,7 @@ function applyBet(prev: State, action: Action, seatIndex: number): State {
     const paid = putIn(seat, toCall);
     state.said[seatIndex] = seat.allIn ? `All-in ${seat.bet}` : `Call ${paid}`;
   } else if (action.type === "raise") {
+    if (!canRaise(state, seatIndex)) return prev;
     const max = seat.bet + seat.chips;
     const to = Math.min(max, Math.floor(action.to));
     const minTo = state.currentBet + state.minRaise;
@@ -295,6 +309,8 @@ function applyBet(prev: State, action: Action, seatIndex: number): State {
   } else {
     return prev;
   }
+  state.lastActedBet ??= state.seats.map(() => null);
+  state.lastActedBet[seatIndex] = state.currentBet;
   const by = state.players[seatIndex];
   state.log = `${by}|${state.said[seatIndex].toLowerCase()}`;
 
@@ -356,7 +372,7 @@ function botAction(state: State, seatIndex: number): Action {
   const raiseTo = (fraction: number): Action => {
     const target = state.currentBet + Math.max(state.minRaise, Math.round((total * fraction) / 10) * 10);
     const to = Math.min(seat.bet + seat.chips, target);
-    if (to <= state.currentBet) return toCall > 0 ? { type: "call" } : { type: "check" };
+    if (to <= state.currentBet || !canRaise(state, seatIndex)) return toCall > 0 ? { type: "call" } : { type: "check" };
     return { type: "raise", to };
   };
   if (adj > 0.8 && mood < 0.7) return raiseTo(mood < 0.25 ? 1 : 0.6);
@@ -511,7 +527,7 @@ function PokerView({ state, me, names, act, finished }: GameViewProps<State, Act
                 Check
               </button>
             )}
-            {maxTo > state.currentBet && maxTo > toCall + seat.bet && (
+            {canRaise(state, mySeat) && maxTo > state.currentBet && maxTo > toCall + seat.bet && (
               <div className="poker-raise">
                 <div className="poker-presets">
                   {[
@@ -568,6 +584,7 @@ export const pokerGame: GameDef<State, Action> = {
         turn: 0,
         street: "preflop",
         toAct: [],
+        lastActedBet: [],
         currentBet: 0,
         minRaise: 0,
         hand: 0,

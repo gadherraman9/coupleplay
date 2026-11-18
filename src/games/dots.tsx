@@ -128,7 +128,7 @@ export const dotsGame: GameDef<State, Action> = {
   }),
   apply: (state, action, by) => {
     const seat = state.players.indexOf(by);
-    if (state.winner || seat !== state.turn || state.lines[action.line] !== null) return state;
+    if (state.winner || seat !== state.turn || action.type !== "line" || state.lines[action.line] !== null) return state;
     const lines = [...state.lines];
     lines[action.line] = seat;
     const boxes = [...state.boxes];

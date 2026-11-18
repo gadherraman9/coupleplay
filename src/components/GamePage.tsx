@@ -5,8 +5,9 @@ import { attempt, useApp } from "../context";
 import { gameById } from "../games/registry";
 import { GENERIC_RULES, RULES } from "../games/rules";
 import { levelProgress } from "../progress";
-import { defaultSkin, SKINS, tableFor } from "../skins";
+import { pickedSkin, saveCustomCardBack, SKINS, tableFor, useCustomCardBack } from "../skins";
 import SkinPreview from "./SkinPreview";
+import CustomCardBack from "./CustomCardBack";
 import type { Skin, SkinKind } from "../skins";
 import { UserAvatar } from "./Avatar";
 import GameModeSheet from "./GameModeSheet";
@@ -16,7 +17,7 @@ export function skinKindOf(gameId: string, felt?: boolean): SkinKind | null {
   if (gameId === "ludo") return "ludo";
   if (gameId === "snakes") return "snakes";
   if (gameId === "tycoon") return "dice";
-  return felt ? "cards" : null;
+  return felt ? "cards" : "table";
 }
 
 // Pickers shown together for a game: its board plus goti and dice, or card
@@ -46,7 +47,8 @@ type Tab = "play" | "shop" | "leaders" | "rules";
 
 function SkinGrid({ kind, ownedOnly }: { kind: SkinKind; ownedOnly: boolean }) {
   const { me, notify } = useApp();
-  const current = kind === "table" ? tableFor(me.skins).id : me.skins?.[kind] ?? defaultSkin(kind).id;
+  const photo = useCustomCardBack(kind === "cards" ? me.id : undefined);
+  const current = photo ? undefined : kind === "table" ? tableFor(me.skins).id : pickedSkin(me.skins, kind).id;
   const list = SKINS.filter((s) => s.kind === kind && (!ownedOnly || s.price === 0 || me.ownedThemes.includes(s.id)));
   const choose = (skin: Skin) => {
     const free = skin.price === 0;
@@ -57,34 +59,38 @@ function SkinGrid({ kind, ownedOnly }: { kind: SkinKind; ownedOnly: boolean }) {
         notify(`Unlocked ${skin.name}! 🎉`);
       }
       api.applySkin(me.id, kind, skin.id, free);
+      if (kind === "cards" && photo) saveCustomCardBack(me.id);
       if (owned) notify(`${skin.name} applied`);
     });
   };
   return (
-    <div className="shop-grid shop-grid--skins">
-      {list.map((skin) => {
-        const owned = skin.price === 0 || me.ownedThemes.includes(skin.id);
-        return (
-          <button key={skin.id} type="button" className={`shop-item shop-item--skin ${current === skin.id ? "is-active" : ""}`} onClick={() => choose(skin)}>
-            <SkinPreview skin={skin} />
-            <strong>{skin.name}</strong>
-            <small>
-              {current === skin.id ? (
-                <>
-                  <Check size={12} /> In use
-                </>
-              ) : owned ? (
-                "Owned · tap to use"
-              ) : (
-                <>
-                  <Heart size={11} fill="currentColor" /> {skin.price}
-                </>
-              )}
-            </small>
-          </button>
-        );
-      })}
-    </div>
+    <>
+      {kind === "cards" && <CustomCardBack />}
+      <div className="shop-grid shop-grid--skins">
+        {list.map((skin) => {
+          const owned = skin.price === 0 || me.ownedThemes.includes(skin.id);
+          return (
+            <button key={skin.id} type="button" aria-pressed={current === skin.id} className={`shop-item shop-item--skin ${current === skin.id ? "is-active" : ""}`} onClick={() => choose(skin)}>
+              <SkinPreview skin={skin} />
+              <strong>{skin.name}</strong>
+              <small>
+                {current === skin.id ? (
+                  <>
+                    <Check size={12} /> In use
+                  </>
+                ) : owned ? (
+                  "Owned · tap to use"
+                ) : (
+                  <>
+                    <Heart size={11} fill="currentColor" /> {skin.price}
+                  </>
+                )}
+              </small>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

@@ -40,11 +40,17 @@ export const RULES: Record<string, { title: string; text: string }[]> = {
     { title: "Jokers", text: "Printed jokers and every card of the wild rank can stand in for any card." },
     { title: "Points", text: "Other players score the points of their unmatched cards (max 80). Lowest total after 3 deals wins." },
   ],
+  pool: [
+    { title: "Goal", text: "Pocket your solids or stripes, then pocket the black on a later shot." },
+    { title: "Aim", text: "Tap or drag on the table, adjust power, then Shoot. Arrow keys fine-tune aim and power." },
+    { title: "Fouls", text: "Scratching, hitting the wrong ball first, missing all balls, or making no pocket/cushion contact after a hit gives the opponent ball in hand." },
+    { title: "Ball in hand", text: "Place the cue on a clear spot and confirm. Potting black too early or with a foul loses the game." },
+  ],
   chess: [
     { title: "Goal", text: "Checkmate the other king: attack it so it has no safe move." },
     { title: "Moves", text: "Tap a piece to see where it can go, then tap a highlighted square." },
     { title: "Special moves", text: "Castling, en passant and pawn promotion are all supported." },
-    { title: "Draws", text: "Stalemate, 50 moves without a capture or too few pieces end in a draw, and a new game starts with colours swapped." },
+    { title: "Draws", text: "Claim after threefold repetition or 50 moves by each player without a pawn move or capture. Fivefold repetition, 75 moves, stalemate and dead positions draw automatically. Use Rematch to play again." },
   ],
 };
 
